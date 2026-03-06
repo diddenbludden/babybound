@@ -80,7 +80,7 @@ local UtilitySection = WorldTab:CreateSection("Utility")
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then
+    if input.KeyCode == Enum.KeyCode.K then
         PlaySound(Sounds.Click, 0.5, 1)
         Rayfield:Toggle()
     end
@@ -437,7 +437,7 @@ WorldTab:CreateToggle({
 
 WorldTab:CreateKeybind({
     Name = "Toggle GUI",
-    CurrentKeybind = "RightShift",
+    CurrentKeybind = "K",
     HoldToInteract = false,
     Flag = "ToggleGUI",
     Callback = function()
@@ -543,7 +543,7 @@ end)
 
 Rayfield:Notify({
     Title = "BabyBound",
-    Content = "Successfully loaded! | RightShift = Toggle GUI",
+    Content = "Successfully loaded! | K = Toggle GUI",
     Duration = 5,
     Image = 4483362458,
 })
