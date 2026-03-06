@@ -543,7 +543,7 @@ end)
 
 Rayfield:Notify({
     Title = "BabyBound",
-    Content = "Successfully loaded! | K = Toggle GUI",
+    Content = "Successfully loaded! | RShift = Toggle GUI",
     Duration = 5,
     Image = 4483362458,
 })
