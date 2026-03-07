@@ -8,4 +8,4 @@ Top1 Westbound Script by Pwoxy
 
 Fix Autofarm Sell Issue
 
-Get Silent Aim Working (currently using FindPartOnRayWithIgnoreList / Counterblox Method)
+~~Get Silent Aim Working~~
