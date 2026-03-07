@@ -5,6 +5,11 @@ local Settings = {
     AimAnimals = false,
     WallCheck = false,
     SilentAim = false,
+    SAAliveCheck = false,
+    SAVisibleCheck = false,
+    SABulletTP = false,
+    SAShowTarget = false,
+    SAWhitelist = {},
     FOV = 150,
     ShowFOVCircle = false,
     PlayerName = false,
@@ -51,6 +56,7 @@ local Window = Rayfield:CreateWindow({
     LoadingTitle = "BabyBound",
     LoadingSubtitle = "by 80he",
     Theme = "Amethyst",
+    ToggleUIKeybind = "K",
     DisableRayfieldPrompts = false,
     DisableBuildWarnings = false,
 })
@@ -177,9 +183,6 @@ workspace.ChildRemoved:Connect(function(obj)
 end)
 
 -- ─── MANSION DETECTION ───────────────────────────────────────────────────────
--- Night = mansion open. Also watches for explicit Open/IsOpen BoolValues
--- inside any mansion-named objects.
-
 local function IsNight()
     local t = Lighting.ClockTime
     return t >= 18 or t < 6
@@ -216,7 +219,6 @@ end
 local mansionOpen = CheckMansionOpen()
 local mansionStateTime = tick()
 
--- Poll every 2 seconds
 task.spawn(function()
     while true do
         task.wait(2)
@@ -244,9 +246,7 @@ task.spawn(function()
     end
 end)
 
--- Update HUD every heartbeat
 RunService.Heartbeat:Connect(function()
-    -- Train row
     local tElapsed = math.floor(tick() - trainStateTime)
     if trainPresent then
         TrainHudLabel.Text = "🚂 Train active: " .. FormatTime(tElapsed)
@@ -256,7 +256,6 @@ RunService.Heartbeat:Connect(function()
         TrainHudLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
     end
 
-    -- Mansion row
     local mElapsed = math.floor(tick() - mansionStateTime)
     if mansionOpen then
         MansionHudLabel.Text = "🏚️ Mansion OPEN: " .. FormatTime(mElapsed)
@@ -277,14 +276,6 @@ CombatTab:CreateSection("Aimbot Settings")
 VisualsTab:CreateSection("Visuals")
 WorldTab:CreateSection("Utility")
 FarmTab:CreateSection("Mansion Item Farm")
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.K then
-        PlaySound(Sounds.Click, 0.5, 1)
-        Rayfield:Toggle()
-    end
-end)
 
 local function GetRootPart(obj)
     if obj:IsA("BasePart") then return obj end
@@ -434,6 +425,118 @@ local function ValidateLockedTarget()
     return true
 end
 -- ──────────────────────────────────────────────────────────────────────────────
+
+-- ─── COUNTERBLOX SILENT AIM ───────────────────────────────────────────────────
+-- Target is computed on Heartbeat (safe, outside hook) and cached here.
+-- The hook only reads this cached value — zero Camera calls inside the hook.
+local _saCurrentTarget = nil
+
+local function SAIsVisible(targetPart)
+    if not targetPart or not LocalPlayer.Character then return false end
+    local origin = Camera.CFrame.Position
+    local direction = targetPart.Position - origin
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = { LocalPlayer.Character }
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.IgnoreWater = true
+    local result = workspace:Raycast(origin, direction, raycastParams)
+    if result then
+        return result.Instance:IsDescendantOf(targetPart.Parent)
+    end
+    return true
+end
+
+local function UpdateSATarget()
+    if not Settings.SilentAim then
+        _saCurrentTarget = nil
+        return
+    end
+    local bestPart = nil
+    local bestDist = math.huge
+    local cx = Camera.ViewportSize.X / 2
+    local cy = Camera.ViewportSize.Y / 2
+
+    for _, v in pairs(Players:GetPlayers()) do
+        if v == LocalPlayer then continue end
+
+        if next(Settings.SAWhitelist) ~= nil then
+            if not Settings.SAWhitelist[v.Name] then continue end
+        end
+
+        local char = v.Character
+        if not char then continue end
+
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then continue end
+
+        if Settings.SAAliveCheck and hum.Health <= 0 then continue end
+        if Settings.SAVisibleCheck and not SAIsVisible(hrp) then continue end
+
+        local ok, screenPos, onScreen = pcall(function()
+            return Camera:WorldToViewportPoint(hrp.Position)
+        end)
+        if not ok or not onScreen then continue end
+
+        local dist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(cx, cy)).Magnitude
+        if dist < bestDist then
+            bestDist = dist
+            bestPart = hrp
+        end
+    end
+
+    _saCurrentTarget = bestPart
+end
+
+-- Update target every heartbeat — completely safe, no hook involvement
+RunService.Heartbeat:Connect(function()
+    pcall(UpdateSATarget)
+end)
+
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    local method = getnamecallmethod()
+
+    -- Read cached target only — no function calls that touch Camera or workspace
+    if Settings.SilentAim and not checkcaller() then
+        if method == "FindPartOnRayWithIgnoreList"
+        or method == "FindPartOnRayWithWhitelist"
+        or method == "FindPartOnRay"
+        or method == "findPartOnRay"
+        or method == "Raycast" then
+            local args = {...}
+            if args[1] == workspace then
+                local target = _saCurrentTarget
+                if target and target.Parent then
+                    if method == "Raycast" then
+                        local origin = args[2]
+                        if typeof(origin) == "Vector3" then
+                            if Settings.SABulletTP then
+                                origin = (target.CFrame * CFrame.new(0, 0, 1)).Position
+                            end
+                            args[2] = origin
+                            args[3] = (target.Position - origin).Unit * 1000
+                            return oldNamecall(unpack(args))
+                        end
+                    else
+                        local ray = args[2]
+                        if typeof(ray) == "Ray" then
+                            local origin = ray.Origin
+                            if Settings.SABulletTP then
+                                origin = (target.CFrame * CFrame.new(0, 0, 1)).Position
+                            end
+                            args[2] = Ray.new(origin, (target.Position - origin).Unit * 1000)
+                            return oldNamecall(unpack(args))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return oldNamecall(...)
+end))
+-- ─────────────────────────────────────────────────────────────────────────────
 
 local function ManageESP(obj, text, color, tag, shouldShow, dist, isPlayer)
     local rootPart = isPlayer and (obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart")) or GetRootPart(obj)
@@ -602,11 +705,9 @@ local function HopTo(targetPos)
         local stepPos = currentPos + toTarget.Unit * stepDist
 
         if dist <= STEP_SIZE then
-            -- Final hop: teleport directly into the object, no surface snapping
             hrp.CFrame = CFrame.new(targetPos)
             break
         else
-            -- Still far away: snap to nearest surface as normal
             local surfacePos = FindSurfaceNear(stepPos)
             hrp.CFrame = CFrame.new(surfacePos)
         end
@@ -648,9 +749,7 @@ local function FirePromptOn(obj)
 end
 
 local function InteractAt(obj)
-    -- F key sim
     PressF()
-    -- Prompt fire as backup
     if obj then FirePromptOn(obj) end
     task.wait(0.3)
 end
@@ -776,7 +875,6 @@ end
 -- ─── SELL TRIGGER FLAGS ──────────────────────────────────────────────────────
 local sellTriggeredByChat = false
 
--- Watch chat for inventory full message
 pcall(function()
     local TextChatService = game:GetService("TextChatService")
     TextChatService.MessageReceived:Connect(function(msg)
@@ -787,7 +885,6 @@ pcall(function()
             end
         end)
     end)
-    -- Also watch TextChannels
     local channels = TextChatService:FindFirstChild("TextChannels")
     if channels then
         local function hookChannel(ch)
@@ -807,8 +904,6 @@ pcall(function()
     end
 end)
 
--- General Store at Red Rocks Camp — hardcoded sell destination
--- Falls back to keyword scan if not found
 local function FindGeneralStore()
     local storeKeywords = {"generalstore", "general store", "general_store", "redrock", "red rock", "camp store", "campstore"}
     for _, obj in pairs(workspace:GetDescendants()) do
@@ -823,7 +918,6 @@ local function FindGeneralStore()
         end)
         if ok and result then return result end
     end
-    -- Fallback to generic sell scan
     return FindSellLocation()
 end
 
@@ -849,7 +943,6 @@ local function StartFarm()
     if farmThread then return end
     farmThread = task.spawn(function()
 
-        -- Enable noclip for entire farm session
         local noclipConn = RunService.Stepped:Connect(function()
             local c = LocalPlayer.Character
             if not c then return end
@@ -864,17 +957,14 @@ local function StartFarm()
                 task.wait(1) continue
             end
 
-            -- ── SELL: triggered by chat message OR inventory full ─────────
             if sellTriggeredByChat or GetInventoryCount() >= Settings.MaxInventory then
                 DoSell()
                 if not Settings.AutoFarm then break end
                 continue
             end
 
-            -- ── GET ITEMS ─────────────────────────────────────────────────
             local items = GetFarmableItems()
             if #items == 0 then
-                -- Mansion is empty — go sell whatever we have, then loop back
                 if GetInventoryCount() > 0 then
                     DoSell()
                     if not Settings.AutoFarm then break end
@@ -885,7 +975,6 @@ local function StartFarm()
                 continue
             end
 
-            -- Sort nearest first
             table.sort(items, function(a, b)
                 local rpa = GetRootPart(a)
                 local rpb = GetRootPart(b)
@@ -893,10 +982,8 @@ local function StartFarm()
                 return GetDist(rpa.Position) < GetDist(rpb.Position)
             end)
 
-            -- ── HOP → INTERACT → NEXT ITEM ───────────────────────────────
             for _, item in pairs(items) do
                 if not Settings.AutoFarm then break end
-                -- Check sell triggers mid-loop too
                 if sellTriggeredByChat or GetInventoryCount() >= Settings.MaxInventory then break end
 
                 local rp = GetRootPart(item)
@@ -915,7 +1002,6 @@ local function StartFarm()
             task.wait(0.3)
         end
 
-        -- Disable noclip
         noclipConn:Disconnect()
         local c = LocalPlayer.Character
         if c then
@@ -935,7 +1021,6 @@ local function StopFarm()
         task.cancel(farmThread)
         farmThread = nil
     end
-    -- Restore collision
     local c = LocalPlayer.Character
     if c then
         for _, p in pairs(c:GetDescendants()) do
@@ -976,6 +1061,8 @@ CombatTab:CreateToggle({
         Settings.WallCheck = v
     end,
 })
+
+CombatTab:CreateSection("Silent Aim (CounterBlox)")
 CombatTab:CreateToggle({
     Name = "Silent Aim",
     CurrentValue = false,
@@ -985,6 +1072,87 @@ CombatTab:CreateToggle({
         Settings.SilentAim = v
     end,
 })
+CombatTab:CreateToggle({
+    Name = "SA: Alive Check",
+    CurrentValue = false,
+    Flag = "SAAliveCheck",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.SAAliveCheck = v
+    end,
+})
+CombatTab:CreateToggle({
+    Name = "SA: Visible Check",
+    CurrentValue = false,
+    Flag = "SAVisibleCheck",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.SAVisibleCheck = v
+    end,
+})
+CombatTab:CreateToggle({
+    Name = "SA: Bullet Teleport",
+    CurrentValue = false,
+    Flag = "SABulletTP",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.SABulletTP = v
+    end,
+})
+CombatTab:CreateToggle({
+    Name = "SA: Show Target Highlight",
+    CurrentValue = false,
+    Flag = "SAShowTarget",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.SAShowTarget = v
+        if not v then
+            -- clean up any leftover highlight
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character then
+                    local h = p.Character:FindFirstChild("BabyBoundSATarget")
+                    if h then h:Destroy() end
+                end
+            end
+        end
+    end,
+})
+
+-- Build initial player list for the dropdown (excludes self)
+local function GetPlayerNames()
+    local names = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(names, p.Name)
+        end
+    end
+    table.sort(names)
+    return names
+end
+
+local SAWhitelistDropdown = CombatTab:CreateDropdown({
+    Name = "SA Whitelist (ignore = target all)",
+    Options = GetPlayerNames(),
+    CurrentOption = {},
+    MultipleOptions = true,
+    Flag = "SAWhitelistDropdown",
+    Callback = function(selected)
+        PlaySound(Sounds.Click, 0.4, 1)
+        Settings.SAWhitelist = {}
+        for _, name in pairs(selected) do
+            Settings.SAWhitelist[name] = true
+        end
+    end,
+})
+
+-- When a whitelisted player leaves, remove them from the active whitelist
+Players.PlayerRemoving:Connect(function(p)
+    if Settings.SAWhitelist[p.Name] then
+        Settings.SAWhitelist[p.Name] = nil
+    end
+end)
+
+CombatTab:CreateSection("Aimbot FOV")
 CombatTab:CreateSlider({
     Name = "FOV Radius",
     Range = {0, 800},
@@ -1229,17 +1397,6 @@ WorldTab:CreateToggle({
         Settings.InstantInteract = v
     end,
 })
-WorldTab:CreateKeybind({
-    Name = "Toggle GUI",
-    CurrentKeybind = "K",
-    HoldToInteract = false,
-    Flag = "ToggleGUI",
-    Callback = function()
-        PlaySound(Sounds.Click, 0.5, 1)
-        Rayfield:Toggle()
-    end,
-})
-
 -- ─── AUTOFARM TAB ─────────────────────────────────────────────────────────────
 FarmTab:CreateToggle({
     Name = "Auto Farm (Mansion Items)",
@@ -1425,21 +1582,41 @@ RunService.RenderStepped:Connect(function()
 
     local isAiming = (Settings.AimPlayers or Settings.AimAnimals)
         and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-    local isSilent = Settings.SilentAim
-        and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 
-    if isAiming or isSilent then
+    if isAiming then
         if not ValidateLockedTarget() then LockedTarget = nil end
         if not LockedTarget then LockedTarget = GetClosestTarget() end
         if LockedTarget and LockedTarget.Parent then
-            if isAiming then
-                Camera.CFrame = CFrame.new(Camera.CFrame.Position, LockedTarget.Position)
-            elseif isSilent then
-                Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, LockedTarget.Position), 0.1)
-            end
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, LockedTarget.Position)
         end
     else
         LockedTarget = nil
+    end
+
+    -- SA target highlight: reads the cached target — safe, no Camera calls here
+    do
+        local saTarget = (Settings.SilentAim and Settings.SAShowTarget) and _saCurrentTarget or nil
+        for _, p in pairs(Players:GetPlayers()) do
+            if p == LocalPlayer or not p.Character then continue end
+            local char = p.Character
+            local existing = char:FindFirstChild("BabyBoundSATarget")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if saTarget and hrp and saTarget == hrp then
+                -- this is the current SA target — add/keep highlight
+                if not existing then
+                    existing = Instance.new("Highlight")
+                    existing.Name = "BabyBoundSATarget"
+                    existing.FillColor = Color3.fromRGB(255, 30, 30)
+                    existing.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    existing.FillTransparency = 0.4
+                    existing.OutlineTransparency = 0
+                    existing.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    existing.Parent = char
+                end
+            else
+                if existing then existing:Destroy() end
+            end
+        end
     end
 
     if Settings.FullBright then
