@@ -12,17 +12,21 @@ local Settings = {
     PlayerBox = false,
     AnimalESP = false,
     ChestESP = false,
+    ItemESP = false,
     ShowDistance = false,
     ESPDistance = 10000,
     ChestESPDistance = 10000,
+    ItemESPDistance = 10000,
     TextSize = 12,
     PlayerColor = Color3.fromRGB(255, 0, 0),
     AnimalColor = Color3.fromRGB(255, 165, 0),
     ChestColor = Color3.fromRGB(255, 215, 0),
+    ItemColor = Color3.fromRGB(0, 255, 200),
     InstantInteract = false,
     TPWalk = false,
     TPWalkSpeed = 2,
     FullBright = false,
+    NoFog = false,
 }
 
 local Players = game:GetService("Players")
@@ -40,7 +44,7 @@ FOVCircle.Filled = false
 FOVCircle.Transparency = 1
 
 local Window = Rayfield:CreateWindow({
-    Name = "BabyBound | 80he",
+    Name = "BabyBound | 80he, Greg, Fresh",
     Icon = 0,
     LoadingTitle = "BabyBound",
     LoadingSubtitle = "by 80he",
@@ -75,9 +79,17 @@ local CombatTab = Window:CreateTab("Combat", "crosshair")
 local VisualsTab = Window:CreateTab("Visuals", "eye")
 local WorldTab = Window:CreateTab("World", "globe")
 
-local CombatSection = CombatTab:CreateSection("Aimbot Settings")
-local VisualSettingsSection = VisualsTab:CreateSection("Visuals")
-local UtilitySection = WorldTab:CreateSection("Utility")
+CombatTab:CreateSection("Aimbot Settings")
+VisualsTab:CreateSection("Visuals")
+WorldTab:CreateSection("Utility")
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.K then
+        PlaySound(Sounds.Click, 0.5, 1)
+        Rayfield:Toggle()
+    end
+end)
 
 local function GetRootPart(obj)
     if obj:IsA("BasePart") then return obj end
@@ -116,21 +128,37 @@ local function CleanAnimalName(obj)
 end
 
 -- ─── CHEST DETECTION ──────────────────────────────────────────────────────────
-local ChestKeywords = {
-    "treasure"
-}
-
 local function IsChest(obj)
     if not obj:IsA("Model") and not obj:IsA("BasePart") then return false end
     local name = obj.Name:lower()
-    for _, keyword in pairs(ChestKeywords) do
-        if name:find(keyword) then return true end
-    end
-    return false
+    if name:find("%(item%)") then return false end
+    return (name:find("treasure") and name:find("chest")) or name == "treasurechest"
 end
 
 local function GetChestLabel()
     return "💰 Treasure Chest"
+end
+
+-- ─── ITEM DETECTION ───────────────────────────────────────────────────────────
+local function GetItemLabel(obj)
+    local name = obj.Name:lower()
+    if name:find("silver skull") then return "💀 Silver Skull" end
+    if name:find("gold skull") or name:find("golden skull") then return "💀 Gold Skull" end
+    if name:find("gold crown") or name:find("golden crown") then return "👑 Gold Crown" end
+    if name:find("gold key") or name:find("golden key") then return "🔑 Gold Key" end
+    if name:find("silver key") then return "🔑 Silver Key" end
+    if name:find("gold jewelry") or name:find("gold jewlery") or name:find("gold jewellery")
+    or name:find("golden jewelry") or name:find("golden jewlery") then return "📿 Gold Jewelry" end
+    if name:find("jewelry") or name:find("jewlery") or name:find("jewellery") then return "📿 Jewelry" end
+    if name:find("emerald") then return "💚 Emerald" end
+    if name:find("ruby") then return "❤️ Ruby" end
+    if name:find("diamond") then return "💎 Diamond" end
+    if name:find("crown") then return "👑 Crown" end
+    return nil
+end
+
+local function IsItem(obj)
+    return GetItemLabel(obj) ~= nil
 end
 -- ──────────────────────────────────────────────────────────────────────────────
 
@@ -149,12 +177,18 @@ local function IsVisible(targetPart)
     return true
 end
 
+-- ─── AIMBOT ───────────────────────────────────────────────────────────────────
+local LockedTarget = nil
+
 local function GetClosestTarget()
     local targetPart = nil
     local dist = Settings.FOV
     if Settings.AimPlayers then
         for _, v in pairs(Players:GetPlayers()) do
-            if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Head") and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
+            if v ~= LocalPlayer and v.Character
+            and v.Character:FindFirstChild("Head")
+            and v.Character:FindFirstChild("Humanoid")
+            and v.Character.Humanoid.Health > 0 then
                 if Settings.WallCheck and not IsVisible(v.Character.Head) then continue end
                 local pos, vis = Camera:WorldToViewportPoint(v.Character.Head.Position)
                 if vis then
@@ -194,6 +228,17 @@ local function GetClosestTarget()
     end
     return targetPart
 end
+
+local function ValidateLockedTarget()
+    if not LockedTarget then return false end
+    if not LockedTarget.Parent then return false end
+    local char = LockedTarget.Parent
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum and hum.Health <= 0 then return false end
+    return true
+end
+-- ──────────────────────────────────────────────────────────────────────────────
 
 local function ManageESP(obj, text, color, tag, shouldShow, dist, isPlayer)
     local rootPart = isPlayer and (obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart")) or GetRootPart(obj)
@@ -263,11 +308,49 @@ local function ManageChestESP(obj, text, color, tag, shouldShow, dist)
     end
 end
 
+local function ManageItemESP(obj, text, color, tag, shouldShow, dist)
+    local rootPart = GetRootPart(obj)
+    if not rootPart then return end
+    local billboard = rootPart:FindFirstChild(tag)
+    local inRange = dist <= Settings.ItemESPDistance
+    if shouldShow and inRange then
+        if not billboard then
+            billboard = Instance.new("BillboardGui")
+            billboard.Name = tag
+            billboard.Adornee = rootPart
+            billboard.AlwaysOnTop = true
+            billboard.Size = UDim2.new(0, 200, 0, 60)
+            billboard.StudsOffset = Vector3.new(0, 3, 0)
+            billboard.Parent = rootPart
+            local label = Instance.new("TextLabel", billboard)
+            label.Name = "TextL"
+            label.Text = ""
+            label.BackgroundTransparency = 1
+            label.Size = UDim2.new(1, 0, 1, 0)
+            label.TextStrokeTransparency = 0
+            label.Font = Enum.Font.SourceSansBold
+        end
+        local label = billboard:FindFirstChild("TextL")
+        if label then
+            label.TextSize = Settings.TextSize
+            label.TextColor3 = color
+            local distText = Settings.ShowDistance and " [" .. dist .. "m]" or ""
+            label.Text = text .. distText
+        end
+    else
+        if billboard then billboard:Destroy() end
+    end
+end
+
 local function ClearAllChestESP()
     for _, obj in pairs(workspace:GetDescendants()) do
-        if obj.Name == "OverlordChestESP" then
-            obj:Destroy()
-        end
+        if obj.Name == "OverlordChestESP" then obj:Destroy() end
+    end
+end
+
+local function ClearAllItemESP()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj.Name == "OverlordItemESP" then obj:Destroy() end
     end
 end
 
@@ -279,9 +362,9 @@ CombatTab:CreateToggle({
     Callback = function(v)
         PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
         Settings.AimPlayers = v
+        if not v then LockedTarget = nil end
     end,
 })
-
 CombatTab:CreateToggle({
     Name = "Aim at Animals",
     CurrentValue = false,
@@ -289,9 +372,9 @@ CombatTab:CreateToggle({
     Callback = function(v)
         PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
         Settings.AimAnimals = v
+        if not v then LockedTarget = nil end
     end,
 })
-
 CombatTab:CreateToggle({
     Name = "Wall Check",
     CurrentValue = false,
@@ -301,7 +384,6 @@ CombatTab:CreateToggle({
         Settings.WallCheck = v
     end,
 })
-
 CombatTab:CreateToggle({
     Name = "Silent Aim",
     CurrentValue = false,
@@ -311,7 +393,6 @@ CombatTab:CreateToggle({
         Settings.SilentAim = v
     end,
 })
-
 CombatTab:CreateSlider({
     Name = "FOV Radius",
     Range = {0, 800},
@@ -324,7 +405,6 @@ CombatTab:CreateSlider({
         Settings.FOV = v
     end,
 })
-
 CombatTab:CreateToggle({
     Name = "Show FOV Circle",
     CurrentValue = false,
@@ -345,7 +425,6 @@ VisualsTab:CreateToggle({
         Settings.PlayerName = v
     end,
 })
-
 VisualsTab:CreateToggle({
     Name = "Health ESP",
     CurrentValue = false,
@@ -355,7 +434,6 @@ VisualsTab:CreateToggle({
         Settings.PlayerHP = v
     end,
 })
-
 VisualsTab:CreateToggle({
     Name = "Chams",
     CurrentValue = false,
@@ -365,7 +443,6 @@ VisualsTab:CreateToggle({
         Settings.PlayerBox = v
     end,
 })
-
 VisualsTab:CreateToggle({
     Name = "Animal ESP",
     CurrentValue = false,
@@ -388,7 +465,6 @@ VisualsTab:CreateToggle({
         end
     end,
 })
-
 VisualsTab:CreateToggle({
     Name = "Chest ESP",
     CurrentValue = false,
@@ -396,12 +472,9 @@ VisualsTab:CreateToggle({
     Callback = function(v)
         PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
         Settings.ChestESP = v
-        if not v then
-            ClearAllChestESP()
-        end
+        if not v then ClearAllChestESP() end
     end,
 })
-
 VisualsTab:CreateSlider({
     Name = "Max Chest ESP Range",
     Range = {500, 20000},
@@ -414,7 +487,6 @@ VisualsTab:CreateSlider({
         Settings.ChestESPDistance = v
     end,
 })
-
 VisualsTab:CreateColorPicker({
     Name = "Chest ESP Color",
     Color = Color3.fromRGB(255, 215, 0),
@@ -424,7 +496,37 @@ VisualsTab:CreateColorPicker({
         Settings.ChestColor = v
     end,
 })
-
+VisualsTab:CreateToggle({
+    Name = "Item ESP",
+    CurrentValue = false,
+    Flag = "ItemESP",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.ItemESP = v
+        if not v then ClearAllItemESP() end
+    end,
+})
+VisualsTab:CreateSlider({
+    Name = "Max Item ESP Range",
+    Range = {500, 20000},
+    Increment = 100,
+    Suffix = "studs",
+    CurrentValue = 10000,
+    Flag = "ItemESPDistance",
+    Callback = function(v)
+        PlaySound(Sounds.Slider, 0.2, 1)
+        Settings.ItemESPDistance = v
+    end,
+})
+VisualsTab:CreateColorPicker({
+    Name = "Item ESP Color",
+    Color = Color3.fromRGB(0, 255, 200),
+    Flag = "ItemColor",
+    Callback = function(v)
+        PlaySound(Sounds.Click, 0.4, 1)
+        Settings.ItemColor = v
+    end,
+})
 VisualsTab:CreateToggle({
     Name = "Show Distance",
     CurrentValue = false,
@@ -434,7 +536,6 @@ VisualsTab:CreateToggle({
         Settings.ShowDistance = v
     end,
 })
-
 VisualsTab:CreateSlider({
     Name = "Max Animal ESP Range",
     Range = {500, 20000},
@@ -447,7 +548,6 @@ VisualsTab:CreateSlider({
         Settings.ESPDistance = v
     end,
 })
-
 VisualsTab:CreateSlider({
     Name = "Text Size",
     Range = {8, 20},
@@ -460,7 +560,6 @@ VisualsTab:CreateSlider({
         Settings.TextSize = v
     end,
 })
-
 VisualsTab:CreateColorPicker({
     Name = "Player ESP Color",
     Color = Color3.fromRGB(255, 0, 0),
@@ -470,7 +569,6 @@ VisualsTab:CreateColorPicker({
         Settings.PlayerColor = v
     end,
 })
-
 VisualsTab:CreateColorPicker({
     Name = "Animal ESP Color",
     Color = Color3.fromRGB(255, 165, 0),
@@ -491,7 +589,24 @@ WorldTab:CreateToggle({
         Settings.FullBright = v
     end,
 })
-
+WorldTab:CreateToggle({
+    Name = "No Fog",
+    CurrentValue = false,
+    Flag = "NoFog",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.NoFog = v
+        if v then
+            local atmos = Lighting:FindFirstChildOfClass("Atmosphere")
+            if atmos then atmos:Destroy() end
+            Lighting.FogEnd = 100000
+            Lighting.FogStart = 100000
+        else
+            Lighting.FogStart = 0
+            Lighting.FogEnd = 100000
+        end
+    end,
+})
 WorldTab:CreateToggle({
     Name = "TP-Walk",
     CurrentValue = false,
@@ -501,7 +616,6 @@ WorldTab:CreateToggle({
         Settings.TPWalk = v
     end,
 })
-
 WorldTab:CreateSlider({
     Name = "TP Speed",
     Range = {1, 15},
@@ -514,7 +628,6 @@ WorldTab:CreateSlider({
         Settings.TPWalkSpeed = v
     end,
 })
-
 WorldTab:CreateToggle({
     Name = "Instant Interact",
     CurrentValue = false,
@@ -524,7 +637,6 @@ WorldTab:CreateToggle({
         Settings.InstantInteract = v
     end,
 })
-
 WorldTab:CreateKeybind({
     Name = "Toggle GUI",
     CurrentKeybind = "K",
@@ -558,8 +670,19 @@ task.spawn(function()
     end
 end)
 
--- ─── CHEST ESP (table-based, no scanning) ────────────────────────────────────
+-- ─── CHEST ESP ────────────────────────────────────────────────────────────────
 local TrackedChests = {}
+
+local function HideChestESP(obj)
+    pcall(function()
+        local rp = GetRootPart(obj)
+        if rp then
+            local bb = rp:FindFirstChild("OverlordChestESP")
+            if bb then bb:Destroy() end
+        end
+    end)
+    TrackedChests[obj] = nil
+end
 
 local function TryTagChest(obj)
     if not IsChest(obj) then return end
@@ -567,32 +690,93 @@ local function TryTagChest(obj)
     if not rp then return end
     if TrackedChests[obj] then return end
     TrackedChests[obj] = true
-    ManageChestESP(obj, GetChestLabel(), Settings.ChestColor, "OverlordChestESP", Settings.ChestESP, GetDist(rp.Position))
+    obj.ChildAdded:Connect(function(child)
+        pcall(function()
+            local n = child.Name:lower()
+            if n == "opened" or n == "open" or n == "isopened" then
+                HideChestESP(obj)
+            end
+        end)
+    end)
 end
 
-for _, obj in pairs(workspace:GetDescendants()) do
-    pcall(TryTagChest, obj)
-end
-
-workspace.DescendantAdded:Connect(function(obj)
-    pcall(TryTagChest, obj)
-end)
-
+for _, obj in pairs(workspace:GetDescendants()) do pcall(TryTagChest, obj) end
+workspace.DescendantAdded:Connect(function(obj) pcall(TryTagChest, obj) end)
 workspace.DescendantRemoving:Connect(function(obj)
-    if TrackedChests[obj] then
-        TrackedChests[obj] = nil
-    end
+    if TrackedChests[obj] then TrackedChests[obj] = nil end
 end)
 
 task.spawn(function()
     while task.wait(1) do
-        if Settings.ChestESP then
-            for obj in pairs(TrackedChests) do
+        for obj in pairs(TrackedChests) do
+            pcall(function()
+                local rp = GetRootPart(obj)
+                if not rp then HideChestESP(obj) return end
+                for _, child in pairs(obj:GetChildren()) do
+                    local n = child.Name:lower()
+                    if n == "opened" or n == "open" or n == "isopened" then
+                        HideChestESP(obj)
+                        return
+                    end
+                end
+                if Settings.ChestESP then
+                    ManageChestESP(obj, GetChestLabel(), Settings.ChestColor, "OverlordChestESP", true, GetDist(rp.Position))
+                else
+                    local bb = rp:FindFirstChild("OverlordChestESP")
+                    if bb then bb:Destroy() end
+                end
+            end)
+        end
+    end
+end)
+
+task.spawn(function()
+    pcall(function()
+        local chestFolder = workspace:WaitForChild("ChestFolder", 15)
+        if not chestFolder then return end
+        chestFolder.ChildRemoved:Connect(function(obj)
+            pcall(function()
+                if TrackedChests[obj] then HideChestESP(obj) end
+            end)
+        end)
+        for _, obj in pairs(chestFolder:GetChildren()) do
+            pcall(TryTagChest, obj)
+        end
+    end)
+end)
+
+task.delay(3, function()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        pcall(TryTagChest, obj)
+    end
+end)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+-- ─── ITEM ESP ─────────────────────────────────────────────────────────────────
+local TrackedItems = {}
+
+local function TryTagItem(obj)
+    if not IsItem(obj) then return end
+    local rp = GetRootPart(obj)
+    if not rp then return end
+    if TrackedItems[obj] then return end
+    TrackedItems[obj] = GetItemLabel(obj)
+end
+
+for _, obj in pairs(workspace:GetDescendants()) do pcall(TryTagItem, obj) end
+workspace.DescendantAdded:Connect(function(obj) pcall(TryTagItem, obj) end)
+workspace.DescendantRemoving:Connect(function(obj)
+    if TrackedItems[obj] then TrackedItems[obj] = nil end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if Settings.ItemESP then
+            for obj, label in pairs(TrackedItems) do
                 pcall(function()
                     local rp = GetRootPart(obj)
-                    if not rp then return end
-                    local dist = GetDist(rp.Position)
-                    ManageChestESP(obj, GetChestLabel(), Settings.ChestColor, "OverlordChestESP", true, dist)
+                    if not rp then TrackedItems[obj] = nil return end
+                    ManageItemESP(obj, label, Settings.ItemColor, "OverlordItemESP", true, GetDist(rp.Position))
                 end)
             end
         end
@@ -605,20 +789,36 @@ RunService.RenderStepped:Connect(function()
     FOVCircle.Radius = Settings.FOV
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
-    local aimPart = GetClosestTarget()
-    if aimPart then
-        if (Settings.AimPlayers or Settings.AimAnimals) and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, aimPart.Position)
+    local isAiming = (Settings.AimPlayers or Settings.AimAnimals)
+        and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    local isSilent = Settings.SilentAim
+        and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+
+    if isAiming or isSilent then
+        if not ValidateLockedTarget() then LockedTarget = nil end
+        if not LockedTarget then LockedTarget = GetClosestTarget() end
+        if LockedTarget and LockedTarget.Parent then
+            if isAiming then
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, LockedTarget.Position)
+            elseif isSilent then
+                Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, LockedTarget.Position), 0.1)
+            end
         end
-        if Settings.SilentAim and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, aimPart.Position), 0.1)
-        end
+    else
+        LockedTarget = nil
     end
 
     if Settings.FullBright then
         Lighting.ClockTime = 14
         Lighting.Brightness = 2
         Lighting.GlobalShadows = false
+    end
+
+    if Settings.NoFog then
+        local atmos = Lighting:FindFirstChildOfClass("Atmosphere")
+        if atmos then atmos:Destroy() end
+        Lighting.FogEnd = 100000
+        Lighting.FogStart = 100000
     end
 
     if Settings.TPWalk and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -637,11 +837,9 @@ RunService.RenderStepped:Connect(function()
             if rp and hum and hum.Health > 0 then
                 local dist = GetDist(rp.Position)
                 local shouldShow = Settings.PlayerName or Settings.PlayerHP
-
                 local dText = ""
                 if Settings.PlayerName then dText = p.Name end
                 if Settings.PlayerHP then dText = dText .. (dText ~= "" and "\n" or "") .. "[HP: " .. math.floor(hum.Health) .. "]" end
-
                 ManageESP(char, dText, Settings.PlayerColor, "OverlordPlayerESP", shouldShow, dist, true)
 
                 local highlight = char:FindFirstChild("OverlordHigh")
