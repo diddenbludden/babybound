@@ -27,6 +27,8 @@ local Settings = {
     TPWalkSpeed = 2,
     FullBright = false,
     NoFog = false,
+    AutoFarm = false,
+    MaxInventory = 10,
 }
 
 local Players = game:GetService("Players")
@@ -75,13 +77,206 @@ task.delay(1.5, function()
     PlaySound(Sounds.Load, 0.6, 1)
 end)
 
+-- ─── HUD: TRAIN + MANSION TIMERS ─────────────────────────────────────────────
+local HudGui = Instance.new("ScreenGui")
+HudGui.Name = "BabyBoundHud"
+HudGui.ResetOnSpawn = false
+HudGui.IgnoreGuiInset = true
+HudGui.Parent = LocalPlayer.PlayerGui
+
+local function MakeHudLabel(yOffset, bgColor, textColor)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 230, 0, 34)
+    frame.Position = UDim2.new(1, -240, 0, yOffset)
+    frame.BackgroundColor3 = bgColor
+    frame.BackgroundTransparency = 0.25
+    frame.BorderSizePixel = 0
+    frame.Parent = HudGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = frame
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -10, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = textColor
+    label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 14
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextStrokeTransparency = 0.5
+    label.Text = ""
+    label.Parent = frame
+
+    return label
+end
+
+-- Top-right corner: train on row 1, mansion on row 2
+local TrainHudLabel   = MakeHudLabel(10, Color3.fromRGB(25, 10, 10), Color3.fromRGB(255, 100, 100))
+local MansionHudLabel = MakeHudLabel(52, Color3.fromRGB(10, 10, 30), Color3.fromRGB(130, 170, 255))
+
+local function FormatTime(seconds)
+    seconds = math.max(0, math.floor(seconds))
+    local m = math.floor(seconds / 60)
+    local s = seconds % 60
+    return string.format("%d:%02d", m, s)
+end
+
+-- ─── TRAIN DETECTION ─────────────────────────────────────────────────────────
+local trainKeywords = {"train", "locomotive", "railcar", "steamengine"}
+
+local function LooksLikeTrain(name)
+    local n = name:lower()
+    for _, kw in pairs(trainKeywords) do
+        if n:find(kw) then return true end
+    end
+    return false
+end
+
+local trainPresent = false
+local trainStateTime = tick()
+
+-- Check workspace top-level children for a train on startup
+for _, obj in pairs(workspace:GetChildren()) do
+    if LooksLikeTrain(obj.Name) then
+        trainPresent = true
+        break
+    end
+end
+
+workspace.ChildAdded:Connect(function(obj)
+    pcall(function()
+        if LooksLikeTrain(obj.Name) and not trainPresent then
+            trainPresent = true
+            trainStateTime = tick()
+            PlaySound(Sounds.Notify, 0.7, 0.85)
+            Rayfield:Notify({
+                Title = "🚂 Train Spotted!",
+                Content = "The train has arrived!",
+                Duration = 5,
+                Image = 4483362458,
+            })
+        end
+    end)
+end)
+
+workspace.ChildRemoved:Connect(function(obj)
+    pcall(function()
+        if LooksLikeTrain(obj.Name) and trainPresent then
+            trainPresent = false
+            trainStateTime = tick()
+            Rayfield:Notify({
+                Title = "🚂 Train Left",
+                Content = "The train has despawned.",
+                Duration = 4,
+                Image = 4483362458,
+            })
+        end
+    end)
+end)
+
+-- ─── MANSION DETECTION ───────────────────────────────────────────────────────
+-- Night = mansion open. Also watches for explicit Open/IsOpen BoolValues
+-- inside any mansion-named objects.
+
+local function IsNight()
+    local t = Lighting.ClockTime
+    return t >= 18 or t < 6
+end
+
+local mansionKeywords = {"mansion", "manor", "haunted", "estate", "victorian", "castle"}
+
+local function LooksLikeMansion(name)
+    local n = name:lower()
+    for _, kw in pairs(mansionKeywords) do
+        if n:find(kw) then return true end
+    end
+    return false
+end
+
+local function CheckMansionOpen()
+    if IsNight() then return true end
+    for _, obj in pairs(workspace:GetDescendants()) do
+        local ok, result = pcall(function()
+            if LooksLikeMansion(obj.Name) then
+                for _, valName in pairs({"Open", "IsOpen", "Active", "Unlocked"}) do
+                    local v = obj:FindFirstChild(valName)
+                    if v and v:IsA("BoolValue") and v.Value then
+                        return true
+                    end
+                end
+            end
+        end)
+        if ok and result then return true end
+    end
+    return false
+end
+
+local mansionOpen = CheckMansionOpen()
+local mansionStateTime = tick()
+
+-- Poll every 2 seconds
+task.spawn(function()
+    while true do
+        task.wait(2)
+        local nowOpen = CheckMansionOpen()
+        if nowOpen ~= mansionOpen then
+            mansionOpen = nowOpen
+            mansionStateTime = tick()
+            if mansionOpen then
+                PlaySound(Sounds.Notify, 0.7, 1.1)
+                Rayfield:Notify({
+                    Title = "🏚️ Mansion Open!",
+                    Content = "Night has fallen — mansion is open!",
+                    Duration = 6,
+                    Image = 4483362458,
+                })
+            else
+                Rayfield:Notify({
+                    Title = "🏚️ Mansion Closed",
+                    Content = "Day has come — mansion is closed.",
+                    Duration = 4,
+                    Image = 4483362458,
+                })
+            end
+        end
+    end
+end)
+
+-- Update HUD every heartbeat
+RunService.Heartbeat:Connect(function()
+    -- Train row
+    local tElapsed = math.floor(tick() - trainStateTime)
+    if trainPresent then
+        TrainHudLabel.Text = "🚂 Train active: " .. FormatTime(tElapsed)
+        TrainHudLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+    else
+        TrainHudLabel.Text = "🚂 Train gone: " .. FormatTime(tElapsed) .. " ago"
+        TrainHudLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+    end
+
+    -- Mansion row
+    local mElapsed = math.floor(tick() - mansionStateTime)
+    if mansionOpen then
+        MansionHudLabel.Text = "🏚️ Mansion OPEN: " .. FormatTime(mElapsed)
+        MansionHudLabel.TextColor3 = Color3.fromRGB(100, 255, 140)
+    else
+        MansionHudLabel.Text = "🏚️ Mansion closed: " .. FormatTime(mElapsed) .. " ago"
+        MansionHudLabel.TextColor3 = Color3.fromRGB(130, 150, 255)
+    end
+end)
+-- ─────────────────────────────────────────────────────────────────────────────
+
 local CombatTab = Window:CreateTab("Combat", "crosshair")
 local VisualsTab = Window:CreateTab("Visuals", "eye")
 local WorldTab = Window:CreateTab("World", "globe")
+local FarmTab = Window:CreateTab("AutoFarm", "star")
 
 CombatTab:CreateSection("Aimbot Settings")
 VisualsTab:CreateSection("Visuals")
 WorldTab:CreateSection("Utility")
+FarmTab:CreateSection("Mansion Item Farm")
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
@@ -353,6 +548,403 @@ local function ClearAllItemESP()
         if obj.Name == "OverlordItemESP" then obj:Destroy() end
     end
 end
+
+-- ─── AUTOFARM ─────────────────────────────────────────────────────────────────
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local ActiveFarmTween = nil
+
+local STEP_SIZE = 50
+local ARRIVE_THRESHOLD = 5
+
+local function FindSurfaceNear(pos)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = { LocalPlayer.Character }
+
+    local downRay = workspace:Raycast(pos + Vector3.new(0, 10, 0), Vector3.new(0, -40, 0), rayParams)
+    if downRay then return downRay.Position + Vector3.new(0, 3, 0) end
+
+    local directions = {
+        Vector3.new(1,0,0), Vector3.new(-1,0,0),
+        Vector3.new(0,0,1), Vector3.new(0,0,-1),
+        Vector3.new(1,0,1).Unit, Vector3.new(-1,0,1).Unit,
+        Vector3.new(1,0,-1).Unit, Vector3.new(-1,0,-1).Unit,
+    }
+    for _, dir in ipairs(directions) do
+        local checkPos = pos + dir * 5
+        local floorRay = workspace:Raycast(checkPos + Vector3.new(0, 10, 0), Vector3.new(0, -40, 0), rayParams)
+        if floorRay then return floorRay.Position + Vector3.new(0, 3, 0) end
+    end
+
+    return pos + Vector3.new(0, 3, 0)
+end
+
+local function HopTo(targetPos)
+    if not Settings.AutoFarm then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    for _ = 1, 200 do
+        if not Settings.AutoFarm then return end
+        char = LocalPlayer.Character
+        hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        local currentPos = hrp.Position
+        local toTarget = targetPos - currentPos
+        local dist = toTarget.Magnitude
+        if dist <= ARRIVE_THRESHOLD then break end
+
+        local stepDist = math.min(STEP_SIZE, dist)
+        local stepPos = currentPos + toTarget.Unit * stepDist
+
+        if dist <= STEP_SIZE then
+            -- Final hop: teleport directly into the object, no surface snapping
+            hrp.CFrame = CFrame.new(targetPos)
+            break
+        else
+            -- Still far away: snap to nearest surface as normal
+            local surfacePos = FindSurfaceNear(stepPos)
+            hrp.CFrame = CFrame.new(surfacePos)
+        end
+
+        task.wait(0.05)
+    end
+end
+
+local function PressF()
+    pcall(function()
+        game:GetService("VirtualInputManager"):SendKeyEvent(true, Enum.KeyCode.F, false, game)
+    end)
+    task.wait(0.08)
+    pcall(function()
+        game:GetService("VirtualInputManager"):SendKeyEvent(false, Enum.KeyCode.F, false, game)
+    end)
+end
+
+local function FirePromptOn(obj)
+    pcall(function()
+        local prompt = obj:FindFirstChildOfClass("ProximityPrompt")
+        if not prompt then
+            for _, child in pairs(obj:GetChildren()) do
+                local p = child:FindFirstChildOfClass("ProximityPrompt")
+                if p then prompt = p break end
+            end
+        end
+        if prompt then
+            local oldHold = prompt.HoldDuration
+            prompt.HoldDuration = 0
+            pcall(function() fireclickdetector(prompt) end)
+            prompt:InputHoldBegin()
+            task.wait(0.05)
+            prompt:InputHoldEnd()
+            task.wait(0.05)
+            prompt.HoldDuration = oldHold
+        end
+    end)
+end
+
+local function InteractAt(obj)
+    -- F key sim
+    PressF()
+    -- Prompt fire as backup
+    if obj then FirePromptOn(obj) end
+    task.wait(0.3)
+end
+
+local function FireSellPrompts()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    for _, obj in pairs(workspace:GetDescendants()) do
+        pcall(function()
+            if obj:IsA("ProximityPrompt") then
+                local action = obj.ActionText:lower()
+                local obj2 = obj.ObjectText:lower()
+                if action:find("sell") or action:find("pawn")
+                or obj2:find("sell") or obj2:find("pawn") or obj2:find("fence") then
+                    local part = obj.Parent
+                    local pos = part and part:IsA("BasePart") and part.Position
+                    if pos and (pos - char.HumanoidRootPart.Position).Magnitude < 20 then
+                        local oldHold = obj.HoldDuration
+                        obj.HoldDuration = 0
+                        obj:InputHoldBegin()
+                        task.wait(0.1)
+                        obj:InputHoldEnd()
+                        obj.HoldDuration = oldHold
+                        task.wait(0.3)
+                    end
+                end
+            end
+        end)
+    end
+end
+
+local function FindSellLocation()
+    local keywords = {"pawn", "sell", "fence", "shop", "buyer", "dealer", "merchant", "vendor"}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        local ok, result = pcall(function()
+            local name = obj.Name:lower()
+            for _, kw in pairs(keywords) do
+                if name:find(kw) then
+                    local rp = GetRootPart(obj)
+                    if rp then return rp.Position end
+                end
+            end
+        end)
+        if ok and result then return result end
+    end
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            local ok, result = pcall(function()
+                local action = obj.ActionText:lower()
+                local obj2 = obj.ObjectText:lower()
+                if action:find("sell") or action:find("pawn")
+                or obj2:find("sell") or obj2:find("pawn") or obj2:find("fence") then
+                    local part = obj.Parent
+                    if part and part:IsA("BasePart") then return part.Position end
+                    local rp = GetRootPart(obj.Parent)
+                    if rp then return rp.Position end
+                end
+            end)
+            if ok and result then return result end
+        end
+    end
+    return nil
+end
+
+local function GetInventoryCount()
+    local count = 0
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, item in pairs(backpack:GetChildren()) do
+            if item:IsA("Tool") or item:IsA("Model") then count = count + 1 end
+        end
+    end
+    local char = LocalPlayer.Character
+    if char then
+        for _, item in pairs(char:GetChildren()) do
+            if item:IsA("Tool") then count = count + 1 end
+        end
+    end
+    return count
+end
+
+local function GetFarmableItems()
+    local items = {}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        pcall(function()
+            if IsItem(obj) and GetRootPart(obj) then
+                table.insert(items, obj)
+            end
+        end)
+    end
+    return items
+end
+
+local FarmStatusGui = Instance.new("ScreenGui")
+FarmStatusGui.Name = "FarmStatusGui"
+FarmStatusGui.ResetOnSpawn = false
+FarmStatusGui.IgnoreGuiInset = true
+FarmStatusGui.Parent = LocalPlayer.PlayerGui
+
+local FarmStatusLabel = Instance.new("TextLabel")
+FarmStatusLabel.Name = "FarmStatus"
+FarmStatusLabel.Size = UDim2.new(0, 280, 0, 36)
+FarmStatusLabel.Position = UDim2.new(0.5, -140, 0, 10)
+FarmStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+FarmStatusLabel.BackgroundTransparency = 0.25
+FarmStatusLabel.TextColor3 = Color3.fromRGB(0, 255, 180)
+FarmStatusLabel.Font = Enum.Font.SourceSansBold
+FarmStatusLabel.TextSize = 15
+FarmStatusLabel.Text = ""
+FarmStatusLabel.TextStrokeTransparency = 0.5
+FarmStatusLabel.Visible = false
+FarmStatusLabel.Parent = FarmStatusGui
+
+local UICornerFarm = Instance.new("UICorner")
+UICornerFarm.CornerRadius = UDim.new(0, 6)
+UICornerFarm.Parent = FarmStatusLabel
+
+local function SetFarmStatus(text)
+    FarmStatusLabel.Text = text
+    FarmStatusLabel.Visible = text ~= ""
+end
+
+-- ─── SELL TRIGGER FLAGS ──────────────────────────────────────────────────────
+local sellTriggeredByChat = false
+
+-- Watch chat for inventory full message
+pcall(function()
+    local TextChatService = game:GetService("TextChatService")
+    TextChatService.MessageReceived:Connect(function(msg)
+        pcall(function()
+            local t = msg.Text:lower()
+            if t:find("inventory") and t:find("full") then
+                sellTriggeredByChat = true
+            end
+        end)
+    end)
+    -- Also watch TextChannels
+    local channels = TextChatService:FindFirstChild("TextChannels")
+    if channels then
+        local function hookChannel(ch)
+            pcall(function()
+                ch.MessageReceived:Connect(function(msg)
+                    pcall(function()
+                        local t = msg.Text:lower()
+                        if t:find("inventory") and t:find("full") then
+                            sellTriggeredByChat = true
+                        end
+                    end)
+                end)
+            end)
+        end
+        for _, ch in pairs(channels:GetChildren()) do hookChannel(ch) end
+        channels.ChildAdded:Connect(hookChannel)
+    end
+end)
+
+-- General Store at Red Rocks Camp — hardcoded sell destination
+-- Falls back to keyword scan if not found
+local function FindGeneralStore()
+    local storeKeywords = {"generalstore", "general store", "general_store", "redrock", "red rock", "camp store", "campstore"}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        local ok, result = pcall(function()
+            local n = obj.Name:lower()
+            for _, kw in pairs(storeKeywords) do
+                if n:find(kw) then
+                    local rp = GetRootPart(obj)
+                    if rp then return rp.Position end
+                end
+            end
+        end)
+        if ok and result then return result end
+    end
+    -- Fallback to generic sell scan
+    return FindSellLocation()
+end
+
+local function DoSell()
+    SetFarmStatus("🏪 Heading to General Store...")
+    local sellPos = FindGeneralStore()
+    if sellPos then
+        HopTo(sellPos)
+        if not Settings.AutoFarm then return end
+        task.wait(0.4)
+        FireSellPrompts()
+        task.wait(0.5)
+        sellTriggeredByChat = false
+    else
+        SetFarmStatus("⚠️ No sell location found...")
+        task.wait(3)
+    end
+end
+
+local farmThread = nil
+
+local function StartFarm()
+    if farmThread then return end
+    farmThread = task.spawn(function()
+
+        -- Enable noclip for entire farm session
+        local noclipConn = RunService.Stepped:Connect(function()
+            local c = LocalPlayer.Character
+            if not c then return end
+            for _, p in pairs(c:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+            end
+        end)
+
+        while Settings.AutoFarm do
+            local char = LocalPlayer.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then
+                task.wait(1) continue
+            end
+
+            -- ── SELL: triggered by chat message OR inventory full ─────────
+            if sellTriggeredByChat or GetInventoryCount() >= Settings.MaxInventory then
+                DoSell()
+                if not Settings.AutoFarm then break end
+                continue
+            end
+
+            -- ── GET ITEMS ─────────────────────────────────────────────────
+            local items = GetFarmableItems()
+            if #items == 0 then
+                -- Mansion is empty — go sell whatever we have, then loop back
+                if GetInventoryCount() > 0 then
+                    DoSell()
+                    if not Settings.AutoFarm then break end
+                else
+                    SetFarmStatus("⏳ No items — waiting for respawn...")
+                    task.wait(3)
+                end
+                continue
+            end
+
+            -- Sort nearest first
+            table.sort(items, function(a, b)
+                local rpa = GetRootPart(a)
+                local rpb = GetRootPart(b)
+                if not rpa or not rpb then return false end
+                return GetDist(rpa.Position) < GetDist(rpb.Position)
+            end)
+
+            -- ── HOP → INTERACT → NEXT ITEM ───────────────────────────────
+            for _, item in pairs(items) do
+                if not Settings.AutoFarm then break end
+                -- Check sell triggers mid-loop too
+                if sellTriggeredByChat or GetInventoryCount() >= Settings.MaxInventory then break end
+
+                local rp = GetRootPart(item)
+                if not rp or not item.Parent then continue end
+
+                local label = GetItemLabel(item) or item.Name
+                local inv = GetInventoryCount()
+                SetFarmStatus("📦 " .. label .. " [" .. inv .. "/" .. Settings.MaxInventory .. "]")
+
+                HopTo(rp.Position)
+                if not Settings.AutoFarm then break end
+
+                InteractAt(item)
+            end
+
+            task.wait(0.3)
+        end
+
+        -- Disable noclip
+        noclipConn:Disconnect()
+        local c = LocalPlayer.Character
+        if c then
+            for _, p in pairs(c:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = true end
+            end
+        end
+
+        SetFarmStatus("")
+        farmThread = nil
+    end)
+end
+
+local function StopFarm()
+    Settings.AutoFarm = false
+    if farmThread then
+        task.cancel(farmThread)
+        farmThread = nil
+    end
+    -- Restore collision
+    local c = LocalPlayer.Character
+    if c then
+        for _, p in pairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+    end
+    SetFarmStatus("")
+end
+-- ──────────────────────────────────────────────────────────────────────────────
 
 -- ─── COMBAT TAB ───────────────────────────────────────────────────────────────
 CombatTab:CreateToggle({
@@ -647,6 +1239,48 @@ WorldTab:CreateKeybind({
         Rayfield:Toggle()
     end,
 })
+
+-- ─── AUTOFARM TAB ─────────────────────────────────────────────────────────────
+FarmTab:CreateToggle({
+    Name = "Auto Farm (Mansion Items)",
+    CurrentValue = false,
+    Flag = "AutoFarm",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.AutoFarm = v
+        if v then
+            StartFarm()
+            Rayfield:Notify({
+                Title = "AutoFarm",
+                Content = "Farm started! Teleporting to mansion items.",
+                Duration = 4,
+                Image = 4483362458,
+            })
+        else
+            StopFarm()
+            Rayfield:Notify({
+                Title = "AutoFarm",
+                Content = "Farm stopped.",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+FarmTab:CreateSlider({
+    Name = "Max Inventory Slots",
+    Range = {1, 30},
+    Increment = 1,
+    Suffix = "slots",
+    CurrentValue = 10,
+    Flag = "MaxInventory",
+    Callback = function(v)
+        PlaySound(Sounds.Slider, 0.2, 1)
+        Settings.MaxInventory = v
+    end,
+})
+FarmTab:CreateLabel("Tip: Farm teleports to each item in the mansion, picks it up, then goes to sell when inventory is full.")
+-- ──────────────────────────────────────────────────────────────────────────────
 
 -- ─── LOOPS ────────────────────────────────────────────────────────────────────
 task.spawn(function()
