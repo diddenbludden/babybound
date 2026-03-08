@@ -11,3 +11,8 @@ Top1 Westbound Script by Pwoxy
 Fix Autofarm Sell / Inventory Detect Issue
 
 Instant Prompts
+
+Add FOV To Silent Aim
+
+Fix Inf Ammo
+
