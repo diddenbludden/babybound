@@ -49,13 +49,13 @@ FOVCircle.Thickness = 1
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
 FOVCircle.Filled = false
 FOVCircle.Transparency = 1
-
+local GuiTheme = "Default"
 local Window = Rayfield:CreateWindow({
     Name = "BabyBound | 80he, Greg, Fresh",
     Icon = 0,
     LoadingTitle = "BabyBound",
     LoadingSubtitle = "by 80he",
-    Theme = "Amethyst",
+    Theme = GuiTheme,
     ToggleUIKeybind = "K",
     DisableRayfieldPrompts = false,
     DisableBuildWarnings = false,
@@ -82,7 +82,6 @@ local Sounds = {
 task.delay(1.5, function()
     PlaySound(Sounds.Load, 0.6, 1)
 end)
-
 -- ─── HUD: TRAIN + MANSION TIMERS ─────────────────────────────────────────────
 local HudGui = Instance.new("ScreenGui")
 HudGui.Name = "BabyBoundHud"
@@ -118,7 +117,6 @@ local function MakeHudLabel(yOffset, bgColor, textColor)
     return label
 end
 
--- Top-right corner: train on row 1, mansion on row 2
 local TrainHudLabel   = MakeHudLabel(10, Color3.fromRGB(25, 10, 10), Color3.fromRGB(255, 100, 100))
 local MansionHudLabel = MakeHudLabel(52, Color3.fromRGB(10, 10, 30), Color3.fromRGB(130, 170, 255))
 
@@ -143,7 +141,6 @@ end
 local trainPresent = false
 local trainStateTime = tick()
 
--- Check workspace for train on startup
 for _, obj in pairs(workspace:GetChildren()) do
     if LooksLikeTrain(obj.Name) then
         trainPresent = true
@@ -183,6 +180,9 @@ workspace.ChildRemoved:Connect(function(obj)
 end)
 
 -- ─── MANSION DETECTION ───────────────────────────────────────────────────────
+-- Night = mansion open. Also watches for explicit Open/IsOpen BoolValues
+-- inside any mansion-named objects.
+
 local function IsNight()
     local t = Lighting.ClockTime
     return t >= 18 or t < 6
@@ -219,6 +219,7 @@ end
 local mansionOpen = CheckMansionOpen()
 local mansionStateTime = tick()
 
+-- Poll every 2 seconds
 task.spawn(function()
     while true do
         task.wait(2)
@@ -246,7 +247,9 @@ task.spawn(function()
     end
 end)
 
+-- Update HUD every heartbeat
 RunService.Heartbeat:Connect(function()
+    -- Train row
     local tElapsed = math.floor(tick() - trainStateTime)
     if trainPresent then
         TrainHudLabel.Text = "🚂 Train active: " .. FormatTime(tElapsed)
@@ -256,6 +259,7 @@ RunService.Heartbeat:Connect(function()
         TrainHudLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
     end
 
+    -- Mansion row
     local mElapsed = math.floor(tick() - mansionStateTime)
     if mansionOpen then
         MansionHudLabel.Text = "🏚️ Mansion OPEN: " .. FormatTime(mElapsed)
@@ -315,10 +319,11 @@ end
 
 -- ─── CHEST DETECTION ──────────────────────────────────────────────────────────
 local function IsChest(obj)
-    if not obj:IsA("Model") and not obj:IsA("BasePart") then return false end
-    local name = obj.Name:lower()
-    if name:find("%(item%)") then return false end
-    return (name:find("treasure") and name:find("chest")) or name == "treasurechest"
+    if not obj:IsA("Model") then return false end
+    -- Must be inside ChestFolder (direct child)
+    local parent = obj.Parent
+    if not parent or parent.Name ~= "ChestFolder" then return false end
+    return obj.Name == "TreasureChest"
 end
 
 local function GetChestLabel()
@@ -426,8 +431,7 @@ local function ValidateLockedTarget()
 end
 -- ──────────────────────────────────────────────────────────────────────────────
 
--- ─── SILENT AIM BY FRESH ───────────────────────────────────────────────────
-
+-- ─── SILENT AIM ───────────────────────────────────────────────────────────────
 local _saCurrentTarget = nil
 
 local function SAIsVisible(targetPart)
@@ -457,26 +461,20 @@ local function UpdateSATarget()
 
     for _, v in pairs(Players:GetPlayers()) do
         if v == LocalPlayer then continue end
-
         if next(Settings.SAWhitelist) ~= nil then
             if not Settings.SAWhitelist[v.Name] then continue end
         end
-
         local char = v.Character
         if not char then continue end
-
         local hum = char:FindFirstChildOfClass("Humanoid")
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hum or not hrp then continue end
-
         if Settings.SAAliveCheck and hum.Health <= 0 then continue end
         if Settings.SAVisibleCheck and not SAIsVisible(hrp) then continue end
-
         local ok, screenPos, onScreen = pcall(function()
             return Camera:WorldToViewportPoint(hrp.Position)
         end)
         if not ok or not onScreen then continue end
-
         local dist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(cx, cy)).Magnitude
         if dist < bestDist then
             bestDist = dist
@@ -487,7 +485,6 @@ local function UpdateSATarget()
     _saCurrentTarget = bestPart
 end
 
-
 RunService.Heartbeat:Connect(function()
     pcall(UpdateSATarget)
 end)
@@ -496,7 +493,6 @@ local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local method = getnamecallmethod()
 
-    
     if Settings.SilentAim and not checkcaller() then
         if method == "FindPartOnRayWithIgnoreList"
         or method == "FindPartOnRayWithWhitelist"
@@ -572,6 +568,7 @@ local function ManageESP(obj, text, color, tag, shouldShow, dist, isPlayer)
 end
 
 local function ManageChestESP(obj, text, color, tag, shouldShow, dist)
+    -- Use the object itself or its primary part as adornee
     local rootPart = GetRootPart(obj)
     if not rootPart then return end
     local billboard = rootPart:FindFirstChild(tag)
@@ -656,63 +653,48 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local ActiveFarmTween = nil
 
-local STEP_SIZE = 50
+local STEP_SIZE = 25
 local ARRIVE_THRESHOLD = 5
+local TP_DELAY = 0.05
 
 local function FindSurfaceNear(pos)
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = { LocalPlayer.Character }
 
-    local downRay = workspace:Raycast(pos + Vector3.new(0, 10, 0), Vector3.new(0, -40, 0), rayParams)
+    local downRay = workspace:Raycast(pos + Vector3.new(0, 100, 0), Vector3.new(0, -500, 0), rayParams)
     if downRay then return downRay.Position + Vector3.new(0, 3, 0) end
 
     local directions = {
-        Vector3.new(1,0,0), Vector3.new(-1,0,0),
-        Vector3.new(0,0,1), Vector3.new(0,0,-1),
-        Vector3.new(1,0,1).Unit, Vector3.new(-1,0,1).Unit,
-        Vector3.new(1,0,-1).Unit, Vector3.new(-1,0,-1).Unit,
+        Vector3.new(5,0,0), Vector3.new(-5,0,0),
+        Vector3.new(0,0,5), Vector3.new(0,0,-5),
+        Vector3.new(5,0,5), Vector3.new(-5,0,5),
+        Vector3.new(5,0,-5), Vector3.new(-5,0,-5),
     }
     for _, dir in ipairs(directions) do
-        local checkPos = pos + dir * 5
-        local floorRay = workspace:Raycast(checkPos + Vector3.new(0, 10, 0), Vector3.new(0, -40, 0), rayParams)
+        local checkPos = pos + dir
+        local floorRay = workspace:Raycast(checkPos + Vector3.new(0, 100, 0), Vector3.new(0, -500, 0), rayParams)
         if floorRay then return floorRay.Position + Vector3.new(0, 3, 0) end
     end
 
     return pos + Vector3.new(0, 3, 0)
 end
 
-local function HopTo(targetPos)
-    if not Settings.AutoFarm then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    for _ = 1, 200 do
-        if not Settings.AutoFarm then return end
-        char = LocalPlayer.Character
-        hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        local currentPos = hrp.Position
-        local toTarget = targetPos - currentPos
-        local dist = toTarget.Magnitude
-        if dist <= ARRIVE_THRESHOLD then break end
-
-        local stepDist = math.min(STEP_SIZE, dist)
-        local stepPos = currentPos + toTarget.Unit * stepDist
-
-        if dist <= STEP_SIZE then
-            hrp.CFrame = CFrame.new(targetPos)
-            break
-        else
-            local surfacePos = FindSurfaceNear(stepPos)
-            hrp.CFrame = CFrame.new(surfacePos)
+local function GetCenterPos(obj)
+    if not obj then return nil end
+    if obj:IsA("Model") then
+        if obj.PrimaryPart then
+            return obj.PrimaryPart.Position
         end
-
-        task.wait(0.05)
+        local cf, size = obj:GetBoundingBox()
+        return cf.Position
     end
+    if obj:IsA("BasePart") then
+        return obj.Position
+    end
+    local rp = GetRootPart(obj)
+    if rp then return rp.Position end
+    return nil
 end
 
 local function PressF()
@@ -747,6 +729,55 @@ local function FirePromptOn(obj)
     end)
 end
 
+local function HopTo(targetPos, targetItem)
+    if not Settings.AutoFarm then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    for _ = 1, 200 do
+        if not Settings.AutoFarm then return end
+        char = LocalPlayer.Character
+        hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        local currentPos = hrp.Position
+        local toTarget = targetPos - currentPos
+        local dist = toTarget.Magnitude
+        if dist <= ARRIVE_THRESHOLD then break end
+
+        if dist <= STEP_SIZE then
+            hrp.CFrame = CFrame.new(targetPos)
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            task.wait(TP_DELAY)
+
+            -- Pin to item, keep pressing F until it disappears
+            if targetItem then
+                while targetItem and targetItem.Parent and Settings.AutoFarm do
+                    local freshPos = GetCenterPos(targetItem)
+                    if freshPos then
+                        hrp.CFrame = CFrame.new(freshPos)
+                    end
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    PressF()
+                    if targetItem and targetItem.Parent then
+                        FirePromptOn(targetItem)
+                    end
+                    task.wait(0.3)
+                end
+            end
+            break
+        else
+            local stepPos = currentPos + toTarget.Unit * STEP_SIZE
+            local surfacePos = FindSurfaceNear(Vector3.new(stepPos.X, targetPos.Y, stepPos.Z))
+            hrp.CFrame = CFrame.new(surfacePos)
+        end
+
+        task.wait(TP_DELAY)
+    end
+end
+
 local function InteractAt(obj)
     PressF()
     if obj then FirePromptOn(obj) end
@@ -754,46 +785,40 @@ local function InteractAt(obj)
 end
 
 local function FireSellPrompts()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-    for _, obj in pairs(workspace:GetDescendants()) do
-        pcall(function()
-            if obj:IsA("ProximityPrompt") then
-                local action = obj.ActionText:lower()
-                local obj2 = obj.ObjectText:lower()
-                if action:find("sell") or action:find("pawn")
-                or obj2:find("sell") or obj2:find("pawn") or obj2:find("fence") then
-                    local part = obj.Parent
-                    local pos = part and part:IsA("BasePart") and part.Position
-                    if pos and (pos - char.HumanoidRootPart.Position).Magnitude < 20 then
-                        local oldHold = obj.HoldDuration
-                        obj.HoldDuration = 0
-                        obj:InputHoldBegin()
-                        task.wait(0.1)
-                        obj:InputHoldEnd()
-                        obj.HoldDuration = oldHold
-                        task.wait(0.3)
-                    end
-                end
-            end
-        end)
-    end
+    task.wait(0.5)
+
+    -- Fire sell remote
+    pcall(function()
+        game:GetService("ReplicatedStorage").GeneralEvents.Inventory:InvokeServer("Sell")
+    end)
+    task.wait(0.3)
+    pcall(function()
+        game:GetService("ReplicatedStorage").GeneralEvents.Inventory:InvokeServer("Sell")
+    end)
 end
 
 local function FindSellLocation()
-    local keywords = {"pawn", "sell", "fence", "shop", "buyer", "dealer", "merchant", "vendor"}
+    local direct = workspace:FindFirstChild("Shops")
+        and workspace.Shops:FindFirstChild("OutlawGeneralStore1")
+    if direct then
+        local pos = GetCenterPos(direct)
+        if pos then return pos end
+    end
+
+    local keywords = {"OutlawGeneralStore1"}
     for _, obj in pairs(workspace:GetDescendants()) do
         local ok, result = pcall(function()
             local name = obj.Name:lower()
             for _, kw in pairs(keywords) do
-                if name:find(kw) then
-                    local rp = GetRootPart(obj)
-                    if rp then return rp.Position end
+                if name:find(kw:lower()) then
+                    local pos = GetCenterPos(obj)
+                    if pos then return pos end
                 end
             end
         end)
         if ok and result then return result end
     end
+
     for _, obj in pairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") then
             local ok, result = pcall(function()
@@ -810,21 +835,16 @@ local function FindSellLocation()
             if ok and result then return result end
         end
     end
+
     return nil
 end
 
 local function GetInventoryCount()
     local count = 0
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if backpack then
-        for _, item in pairs(backpack:GetChildren()) do
-            if item:IsA("Tool") or item:IsA("Model") then count = count + 1 end
-        end
-    end
-    local char = LocalPlayer.Character
-    if char then
-        for _, item in pairs(char:GetChildren()) do
-            if item:IsA("Tool") then count = count + 1 end
+    local inventory = LocalPlayer:FindFirstChild("Inventory")
+    if inventory then
+        for _, item in pairs(inventory:GetChildren()) do
+            count = count + 1
         end
     end
     return count
@@ -871,109 +891,54 @@ local function SetFarmStatus(text)
     FarmStatusLabel.Visible = text ~= ""
 end
 
--- ─── SELL TRIGGER FLAGS ──────────────────────────────────────────────────────
-local sellTriggeredByChat = false
-
-pcall(function()
-    local TextChatService = game:GetService("TextChatService")
-    TextChatService.MessageReceived:Connect(function(msg)
-        pcall(function()
-            local t = msg.Text:lower()
-            if t:find("inventory") and t:find("full") then
-                sellTriggeredByChat = true
-            end
-        end)
-    end)
-    local channels = TextChatService:FindFirstChild("TextChannels")
-    if channels then
-        local function hookChannel(ch)
-            pcall(function()
-                ch.MessageReceived:Connect(function(msg)
-                    pcall(function()
-                        local t = msg.Text:lower()
-                        if t:find("inventory") and t:find("full") then
-                            sellTriggeredByChat = true
-                        end
-                    end)
-                end)
-            end)
-        end
-        for _, ch in pairs(channels:GetChildren()) do hookChannel(ch) end
-        channels.ChildAdded:Connect(hookChannel)
-    end
-end)
-
-local function FindGeneralStore()
-    local storeKeywords = {"generalstore", "general store", "general_store", "redrock", "red rock", "camp store", "campstore"}
-    for _, obj in pairs(workspace:GetDescendants()) do
-        local ok, result = pcall(function()
-            local n = obj.Name:lower()
-            for _, kw in pairs(storeKeywords) do
-                if n:find(kw) then
-                    local rp = GetRootPart(obj)
-                    if rp then return rp.Position end
-                end
-            end
-        end)
-        if ok and result then return result end
-    end
-    return FindSellLocation()
-end
-
-local function DoSell()
-    SetFarmStatus("🏪 Heading to General Store...")
-    local sellPos = FindGeneralStore()
-    if sellPos then
-        HopTo(sellPos)
-        if not Settings.AutoFarm then return end
-        task.wait(0.4)
-        FireSellPrompts()
-        task.wait(0.5)
-        sellTriggeredByChat = false
-    else
-        SetFarmStatus("⚠️ No sell location found...")
-        task.wait(3)
-    end
-end
-
 local farmThread = nil
 
 local function StartFarm()
     if farmThread then return end
-    farmThread = task.spawn(function()
 
-        local noclipConn = RunService.Stepped:Connect(function()
-            local c = LocalPlayer.Character
-            if not c then return end
-            for _, p in pairs(c:GetDescendants()) do
-                if p:IsA("BasePart") then p.CanCollide = false end
+    noclipConnection = RunService.Stepped:Connect(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
             end
-        end)
+        end
+    end)
 
+    farmThread = task.spawn(function()
         while Settings.AutoFarm do
             local char = LocalPlayer.Character
             if not char or not char:FindFirstChild("HumanoidRootPart") then
                 task.wait(1) continue
             end
 
-            if sellTriggeredByChat or GetInventoryCount() >= Settings.MaxInventory then
-                DoSell()
-                if not Settings.AutoFarm then break end
-                continue
-            end
-
-            local items = GetFarmableItems()
-            if #items == 0 then
-                if GetInventoryCount() > 0 then
-                    DoSell()
+            -- ── SELL if already full before we start ──────────────────────
+            if GetInventoryCount() >= Settings.InventorySlots then
+                SetFarmStatus("🏪 Full — hopping to sell...")
+                local sellPos = FindSellLocation()
+                if sellPos then
+                    HopTo(sellPos)
                     if not Settings.AutoFarm then break end
+                    task.wait(0.4)
+                    FireSellPrompts()
+                    task.wait(0.5)
                 else
-                    SetFarmStatus("⏳ No items — waiting for respawn...")
+                    SetFarmStatus("⚠️ No sell location found...")
                     task.wait(3)
                 end
                 continue
             end
 
+            -- ── GET ITEMS ─────────────────────────────────────────────────
+            local items = GetFarmableItems()
+            if #items == 0 then
+                SetFarmStatus("⏳ No items — waiting...")
+                task.wait(3)
+                continue
+            end
+
+            -- Sort nearest first
             table.sort(items, function(a, b)
                 local rpa = GetRootPart(a)
                 local rpb = GetRootPart(b)
@@ -981,32 +946,53 @@ local function StartFarm()
                 return GetDist(rpa.Position) < GetDist(rpb.Position)
             end)
 
+            -- ── HOP → PIN → NEXT ITEM ────────────────────────────────────
             for _, item in pairs(items) do
                 if not Settings.AutoFarm then break end
-                if sellTriggeredByChat or GetInventoryCount() >= Settings.MaxInventory then break end
 
-                local rp = GetRootPart(item)
-                if not rp or not item.Parent then continue end
+                if GetInventoryCount() >= Settings.InventorySlots then
+                    SetFarmStatus("🏪 Max items — heading to sell...")
+                    local sellPos = FindSellLocation()
+                    if sellPos then
+                        HopTo(sellPos)
+                        if not Settings.AutoFarm then break end
+                        task.wait(0.4)
+                        FireSellPrompts()
+                        task.wait(0.5)
+                    else
+                        SetFarmStatus("⚠️ No sell location found...")
+                        task.wait(3)
+                    end
+                    break
+                end
+
+                local centerPos = GetCenterPos(item)
+                if not centerPos or not item.Parent then continue end
 
                 local label = GetItemLabel(item) or item.Name
-                local inv = GetInventoryCount()
-                SetFarmStatus("📦 " .. label .. " [" .. inv .. "/" .. Settings.MaxInventory .. "]")
+                SetFarmStatus("📦 " .. label .. " [" .. GetInventoryCount() .. "/" .. Settings.InventorySlots .. "]")
 
-                HopTo(rp.Position)
+                HopTo(centerPos, item)
                 if not Settings.AutoFarm then break end
-
-                InteractAt(item)
             end
 
-            task.wait(0.3)
-        end
-
-        noclipConn:Disconnect()
-        local c = LocalPlayer.Character
-        if c then
-            for _, p in pairs(c:GetDescendants()) do
-                if p:IsA("BasePart") then p.CanCollide = true end
+            -- ── NO ITEMS LEFT — sell whatever we have then restart ────────
+            if Settings.AutoFarm and GetInventoryCount() > 0 and #GetFarmableItems() == 0 then
+                SetFarmStatus("🏪 No items left — selling...")
+                local sellPos = FindSellLocation()
+                if sellPos then
+                    HopTo(sellPos)
+                    if not Settings.AutoFarm then break end
+                    task.wait(0.4)
+                    FireSellPrompts()
+                    task.wait(0.5)
+                else
+                    SetFarmStatus("⚠️ No sell location found...")
+                    task.wait(3)
+                end
             end
+
+            task.wait(0.5)
         end
 
         SetFarmStatus("")
@@ -1016,15 +1002,23 @@ end
 
 local function StopFarm()
     Settings.AutoFarm = false
+
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    local char = LocalPlayer.Character
+    if char then
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+    end
+
     if farmThread then
         task.cancel(farmThread)
         farmThread = nil
-    end
-    local c = LocalPlayer.Character
-    if c then
-        for _, p in pairs(c:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = true end
-        end
     end
     SetFarmStatus("")
 end
@@ -1060,8 +1054,46 @@ CombatTab:CreateToggle({
         Settings.WallCheck = v
     end,
 })
+CombatTab:CreateToggle({
+    Name = "Inf Ammo",
+    CurrentValue = false,
+    Flag = "InfAmmo",
+    Callback = function(val)
+        if val then
+            local Consumables = game:GetService("Players").LocalPlayer:WaitForChild("Consumables")
+            
+            -- Connect to every existing item's Changed event
+            local connections = {}
+            local function hookItem(item)
+                if item:IsA("IntValue") then
+                    item.Value = 69420
+                    table.insert(connections, item.Changed:Connect(function()
+                        item.Value = 69420
+                    end))
+                end
+            end
 
-CombatTab:CreateSection("Silent Aim (CounterBlox)")
+            for _, item in pairs(Consumables:GetChildren()) do
+                hookItem(item)
+            end
+            table.insert(connections, Consumables.ChildAdded:Connect(function(child)
+                task.wait(0.1)
+                hookItem(child)
+            end))
+
+            infAmmoThread = connections
+        else
+            if infAmmoThread then
+                for _, c in pairs(infAmmoThread) do
+                    c:Disconnect()
+                end
+                infAmmoThread = nil
+            end
+        end
+    end,
+})
+
+CombatTab:CreateSection("Silent Aim")
 CombatTab:CreateToggle({
     Name = "Silent Aim",
     CurrentValue = false,
@@ -1106,7 +1138,6 @@ CombatTab:CreateToggle({
         PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
         Settings.SAShowTarget = v
         if not v then
-            -- clean up any leftover highlight
             for _, p in pairs(Players:GetPlayers()) do
                 if p ~= LocalPlayer and p.Character then
                     local h = p.Character:FindFirstChild("BabyBoundSATarget")
@@ -1116,7 +1147,6 @@ CombatTab:CreateToggle({
         end
     end,
 })
-
 
 local function GetPlayerNames()
     local names = {}
@@ -1130,7 +1160,7 @@ local function GetPlayerNames()
 end
 
 local SAWhitelistDropdown = CombatTab:CreateDropdown({
-    Name = "SA Whitelist (ignore = target all)",
+    Name = "SA Whitelist (empty = target all)",
     Options = GetPlayerNames(),
     CurrentOption = {},
     MultipleOptions = true,
@@ -1143,7 +1173,6 @@ local SAWhitelistDropdown = CombatTab:CreateDropdown({
         end
     end,
 })
-
 
 Players.PlayerRemoving:Connect(function(p)
     if Settings.SAWhitelist[p.Name] then
@@ -1338,7 +1367,17 @@ VisualsTab:CreateColorPicker({
     end,
 })
 
--- ─── WORLD TAB ────────────────────────────────────────────────────────────────
+-- ─── WORLD TAB ────────────────────────────────────────────────────────────────             ##############
+local GuiThemeDropdown = WorldTab:CreateDropdown({
+    Name = "Themes",
+    Options = {"Default", "AmberGlow", "Amethyst", "Bloom", "DarkBlue", "Green", "Light", "Ocean", "Serenity"},
+    CurrentOption = {"Default"},
+    MultipleOptions = false,
+    Callback = function(Selected)
+    local theme = type(Selected) == "table" and Selected[1] or Selected
+    Window.ModifyTheme(theme)
+end,
+})
 WorldTab:CreateToggle({
     Name = "Full Bright",
     CurrentValue = false,
@@ -1396,6 +1435,7 @@ WorldTab:CreateToggle({
         Settings.InstantInteract = v
     end,
 })
+
 -- ─── AUTOFARM TAB ─────────────────────────────────────────────────────────────
 FarmTab:CreateToggle({
     Name = "Auto Farm (Mansion Items)",
@@ -1423,19 +1463,20 @@ FarmTab:CreateToggle({
         end
     end,
 })
-FarmTab:CreateSlider({
-    Name = "Max Inventory Slots",
-    Range = {1, 30},
-    Increment = 1,
-    Suffix = "slots",
-    CurrentValue = 10,
-    Flag = "MaxInventory",
-    Callback = function(v)
-        PlaySound(Sounds.Slider, 0.2, 1)
-        Settings.MaxInventory = v
+local SlotInput = FarmTab:CreateInput({
+    Name = "Inventory Slots",
+    PlaceholderText = "Enter slot count (e.g. 10)",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(val)
+        local num = tonumber(val)
+        if num and num > 0 then
+            Settings.InventorySlots = math.floor(num)
+        end
     end,
 })
-FarmTab:CreateLabel("Tip: Farm teleports to each item in the mansion, picks it up, then goes to sell when inventory is full.")
+
+-- Also set a default
+Settings.InventorySlots = 24
 -- ──────────────────────────────────────────────────────────────────────────────
 
 -- ─── LOOPS ────────────────────────────────────────────────────────────────────
@@ -1474,6 +1515,15 @@ local function HideChestESP(obj)
     TrackedChests[obj] = nil
 end
 
+local function IsChestOpen(obj)
+    local opened = obj:FindFirstChild("Opened")
+    if opened then
+        if opened:IsA("BoolValue") then return opened.Value end
+        return true -- presence alone = opened
+    end
+    return false
+end
+
 local function TryTagChest(obj)
     if not IsChest(obj) then return end
     local rp = GetRootPart(obj)
@@ -1490,6 +1540,7 @@ local function TryTagChest(obj)
     end)
 end
 
+-- Scan entire workspace including all descendants
 for _, obj in pairs(workspace:GetDescendants()) do pcall(TryTagChest, obj) end
 workspace.DescendantAdded:Connect(function(obj) pcall(TryTagChest, obj) end)
 workspace.DescendantRemoving:Connect(function(obj)
@@ -1502,13 +1553,7 @@ task.spawn(function()
             pcall(function()
                 local rp = GetRootPart(obj)
                 if not rp then HideChestESP(obj) return end
-                for _, child in pairs(obj:GetChildren()) do
-                    local n = child.Name:lower()
-                    if n == "opened" or n == "open" or n == "isopened" then
-                        HideChestESP(obj)
-                        return
-                    end
-                end
+                if IsChestOpen(obj) then HideChestESP(obj) return end
                 if Settings.ChestESP then
                     ManageChestESP(obj, GetChestLabel(), Settings.ChestColor, "OverlordChestESP", true, GetDist(rp.Position))
                 else
@@ -1522,16 +1567,22 @@ end)
 
 task.spawn(function()
     pcall(function()
-        local chestFolder = workspace:WaitForChild("ChestFolder", 15)
+        local chestFolder = workspace:FindFirstChild("ChestFolder") or workspace:WaitForChild("ChestFolder", 10)
         if not chestFolder then return end
+        -- tag all existing chests
+        for _, obj in pairs(chestFolder:GetChildren()) do
+            pcall(TryTagChest, obj)
+        end
+        -- tag new chests as they spawn
+        chestFolder.ChildAdded:Connect(function(obj)
+            pcall(TryTagChest, obj)
+        end)
+        -- remove from tracking when they leave
         chestFolder.ChildRemoved:Connect(function(obj)
             pcall(function()
                 if TrackedChests[obj] then HideChestESP(obj) end
             end)
         end)
-        for _, obj in pairs(chestFolder:GetChildren()) do
-            pcall(TryTagChest, obj)
-        end
     end)
 end)
 
@@ -1592,7 +1643,6 @@ RunService.RenderStepped:Connect(function()
         LockedTarget = nil
     end
 
-    
     do
         local saTarget = (Settings.SilentAim and Settings.SAShowTarget) and _saCurrentTarget or nil
         for _, p in pairs(Players:GetPlayers()) do
@@ -1601,7 +1651,6 @@ RunService.RenderStepped:Connect(function()
             local existing = char:FindFirstChild("BabyBoundSATarget")
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if saTarget and hrp and saTarget == hrp then
-                
                 if not existing then
                     existing = Instance.new("Highlight")
                     existing.Name = "BabyBoundSATarget"
