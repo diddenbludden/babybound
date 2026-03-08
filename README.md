@@ -6,6 +6,7 @@ Top1 Westbound Script by Pwoxy
 
 ~~Working Chest and Item ESP~~
 
+~~Get Silent Aim Working~~
+
 Fix Autofarm Sell Issue
 
-~~Get Silent Aim Working~~
