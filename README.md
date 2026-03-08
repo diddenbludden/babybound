@@ -8,5 +8,5 @@ Top1 Westbound Script by Pwoxy
 
 ~~Get Silent Aim Working~~
 
-Fix Autofarm Sell Issue
+Fix Autofarm Sell / Inventory Detect Issue
 
