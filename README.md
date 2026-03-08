@@ -10,3 +10,4 @@ Top1 Westbound Script by Pwoxy
 
 Fix Autofarm Sell / Inventory Detect Issue
 
+Instant Prompts
