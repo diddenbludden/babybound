@@ -657,13 +657,25 @@ local STEP_SIZE = 25
 local ARRIVE_THRESHOLD = 5
 local TP_DELAY = 0.05
 
+local function Log(tag, msg)
+    print(string.format("[AUTOFARM][%s] %s", tag, tostring(msg)))
+end
+
 local function FindSurfaceNear(pos)
+    Log("SURFACE", "Searching near " .. tostring(pos))
+
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = { LocalPlayer.Character }
 
     local downRay = workspace:Raycast(pos + Vector3.new(0, 100, 0), Vector3.new(0, -500, 0), rayParams)
-    if downRay then return downRay.Position + Vector3.new(0, 3, 0) end
+    if downRay then
+        local result = downRay.Position + Vector3.new(0, 3, 0)
+        Log("SURFACE", "Found via downcast -> " .. tostring(result))
+        return result
+    end
+
+    Log("SURFACE", "Downcast failed, trying directional offsets...")
 
     local directions = {
         Vector3.new(5,0,0), Vector3.new(-5,0,0),
@@ -671,29 +683,52 @@ local function FindSurfaceNear(pos)
         Vector3.new(5,0,5), Vector3.new(-5,0,5),
         Vector3.new(5,0,-5), Vector3.new(-5,0,-5),
     }
-    for _, dir in ipairs(directions) do
+    for i, dir in ipairs(directions) do
         local checkPos = pos + dir
         local floorRay = workspace:Raycast(checkPos + Vector3.new(0, 100, 0), Vector3.new(0, -500, 0), rayParams)
-        if floorRay then return floorRay.Position + Vector3.new(0, 3, 0) end
+        if floorRay then
+            local result = floorRay.Position + Vector3.new(0, 3, 0)
+            Log("SURFACE", string.format("Found via offset #%d (%s) -> %s", i, tostring(dir), tostring(result)))
+            return result
+        end
     end
 
-    return pos + Vector3.new(0, 3, 0)
+    local fallback = pos + Vector3.new(0, 3, 0)
+    Log("SURFACE", "WARN: All raycasts failed, using fallback -> " .. tostring(fallback))
+    return fallback
 end
 
 local function GetCenterPos(obj)
-    if not obj then return nil end
+    if not obj then
+        Log("CENTERPOS", "WARN: obj is nil")
+        return nil
+    end
+
+    Log("CENTERPOS", "Getting center of: " .. obj.Name)
+
     if obj:IsA("Model") then
         if obj.PrimaryPart then
-            return obj.PrimaryPart.Position
+            local pos = obj.PrimaryPart.Position
+            Log("CENTERPOS", "Using PrimaryPart -> " .. tostring(pos))
+            return pos
         end
         local cf, size = obj:GetBoundingBox()
+        Log("CENTERPOS", "Using BoundingBox (no PrimaryPart) -> " .. tostring(cf.Position))
         return cf.Position
     end
+
     if obj:IsA("BasePart") then
+        Log("CENTERPOS", "Object is BasePart -> " .. tostring(obj.Position))
         return obj.Position
     end
+
     local rp = GetRootPart(obj)
-    if rp then return rp.Position end
+    if rp then
+        Log("CENTERPOS", "Using RootPart -> " .. tostring(rp.Position))
+        return rp.Position
+    end
+
+    Log("CENTERPOS", "ERROR: Could not determine position for " .. obj.Name)
     return nil
 end
 
@@ -747,12 +782,12 @@ local function HopTo(targetPos, targetItem)
         local dist = toTarget.Magnitude
         if dist <= ARRIVE_THRESHOLD then break end
 
-        if dist <= STEP_SIZE then
+        if dist <= 100 then
+            -- Short range: direct tp, no surface lookup
             hrp.CFrame = CFrame.new(targetPos)
             hrp.AssemblyLinearVelocity = Vector3.zero
             task.wait(TP_DELAY)
 
-            -- Pin to item, keep pressing F until it disappears
             if targetItem then
                 while targetItem and targetItem.Parent and Settings.AutoFarm do
                     local freshPos = GetCenterPos(targetItem)
@@ -769,6 +804,7 @@ local function HopTo(targetPos, targetItem)
             end
             break
         else
+            -- Long range stepping uses FindSurfaceNear
             local stepPos = currentPos + toTarget.Unit * STEP_SIZE
             local surfacePos = FindSurfaceNear(Vector3.new(stepPos.X, targetPos.Y, stepPos.Z))
             hrp.CFrame = CFrame.new(surfacePos)
