@@ -143,7 +143,7 @@ end
 local trainPresent = false
 local trainStateTime = tick()
 
--- Check workspace top-level children for a train on startup
+-- Check workspace for train on startup
 for _, obj in pairs(workspace:GetChildren()) do
     if LooksLikeTrain(obj.Name) then
         trainPresent = true
@@ -426,9 +426,8 @@ local function ValidateLockedTarget()
 end
 -- ──────────────────────────────────────────────────────────────────────────────
 
--- ─── COUNTERBLOX SILENT AIM ───────────────────────────────────────────────────
--- Target is computed on Heartbeat (safe, outside hook) and cached here.
--- The hook only reads this cached value — zero Camera calls inside the hook.
+-- ─── SILENT AIM BY FRESH ───────────────────────────────────────────────────
+
 local _saCurrentTarget = nil
 
 local function SAIsVisible(targetPart)
@@ -488,7 +487,7 @@ local function UpdateSATarget()
     _saCurrentTarget = bestPart
 end
 
--- Update target every heartbeat — completely safe, no hook involvement
+
 RunService.Heartbeat:Connect(function()
     pcall(UpdateSATarget)
 end)
@@ -497,7 +496,7 @@ local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local method = getnamecallmethod()
 
-    -- Read cached target only — no function calls that touch Camera or workspace
+    
     if Settings.SilentAim and not checkcaller() then
         if method == "FindPartOnRayWithIgnoreList"
         or method == "FindPartOnRayWithWhitelist"
@@ -1118,7 +1117,7 @@ CombatTab:CreateToggle({
     end,
 })
 
--- Build initial player list for the dropdown (excludes self)
+
 local function GetPlayerNames()
     local names = {}
     for _, p in pairs(Players:GetPlayers()) do
@@ -1145,7 +1144,7 @@ local SAWhitelistDropdown = CombatTab:CreateDropdown({
     end,
 })
 
--- When a whitelisted player leaves, remove them from the active whitelist
+
 Players.PlayerRemoving:Connect(function(p)
     if Settings.SAWhitelist[p.Name] then
         Settings.SAWhitelist[p.Name] = nil
@@ -1593,7 +1592,7 @@ RunService.RenderStepped:Connect(function()
         LockedTarget = nil
     end
 
-    -- SA target highlight: reads the cached target — safe, no Camera calls here
+    
     do
         local saTarget = (Settings.SilentAim and Settings.SAShowTarget) and _saCurrentTarget or nil
         for _, p in pairs(Players:GetPlayers()) do
@@ -1602,7 +1601,7 @@ RunService.RenderStepped:Connect(function()
             local existing = char:FindFirstChild("BabyBoundSATarget")
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if saTarget and hrp and saTarget == hrp then
-                -- this is the current SA target — add/keep highlight
+                
                 if not existing then
                     existing = Instance.new("Highlight")
                     existing.Name = "BabyBoundSATarget"
@@ -1684,7 +1683,7 @@ end)
 
 Rayfield:Notify({
     Title = "BabyBound",
-    Content = "Successfully loaded! | K = Toggle GUI",
+    Content = "Loaded!",
     Duration = 5,
     Image = 4483362458,
 })
