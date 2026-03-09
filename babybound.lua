@@ -275,11 +275,13 @@ local CombatTab = Window:CreateTab("Combat", "crosshair")
 local VisualsTab = Window:CreateTab("Visuals", "eye")
 local WorldTab = Window:CreateTab("World", "globe")
 local FarmTab = Window:CreateTab("AutoFarm", "star")
+local AppearanceTab = Window:CreateTab("Appearance", "shirt")
 
 CombatTab:CreateSection("Aimbot Settings")
 VisualsTab:CreateSection("Visuals")
 WorldTab:CreateSection("Utility")
 FarmTab:CreateSection("Mansion Item Farm")
+AppearanceTab:CreateSection("Horse")
 
 local function GetRootPart(obj)
     if obj:IsA("BasePart") then return obj end
@@ -1100,6 +1102,45 @@ CombatTab:CreateToggle({
     end,
 })
 CombatTab:CreateToggle({
+    Name = "No Recoil",
+    CurrentValue = false,
+    Flag = "NoRecoil",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        if v then
+            local stateConfig = LocalPlayer:FindFirstChild("StateConfig")
+            if not stateConfig then
+                Rayfield:Notify({ Title = "No Recoil", Content = "StateConfig not found!", Duration = 3, Image = 4483362458 })
+                return
+            end
+            local recoilVal = stateConfig:FindFirstChild("RecoilVal")
+            if not recoilVal then
+                Rayfield:Notify({ Title = "No Recoil", Content = "RecoilVal not found!", Duration = 3, Image = 4483362458 })
+                return
+            end
+            _G.NoRecoilHeartbeat = RunService.Heartbeat:Connect(function()
+                if recoilVal and recoilVal.Parent then
+                    recoilVal.Value = Vector3.new(0, 0, 0)
+                end
+            end)
+            _G.NoRecoilChanged = recoilVal:GetPropertyChangedSignal("Value"):Connect(function()
+                if recoilVal and recoilVal.Parent then
+                    recoilVal.Value = Vector3.new(0, 0, 0)
+                end
+            end)
+        else
+            if _G.NoRecoilHeartbeat then
+                _G.NoRecoilHeartbeat:Disconnect()
+                _G.NoRecoilHeartbeat = nil
+            end
+            if _G.NoRecoilChanged then
+                _G.NoRecoilChanged:Disconnect()
+                _G.NoRecoilChanged = nil
+            end
+        end
+    end,
+})
+CombatTab:CreateToggle({
     Name = "Inf Ammo",
     CurrentValue = false,
     Flag = "InfAmmo",
@@ -1523,7 +1564,221 @@ local SlotInput = FarmTab:CreateInput({
 -- Also set a default
 Settings.InventorySlots = 24
 -- ──────────────────────────────────────────────────────────────────────────────
+-- ─── APPEARANCE TAB ─────────────────────────────────────────────────────────────
+local function FindMyHorse()
+    local username = LocalPlayer.Name
+    for _, h in pairs(workspace.Horses:GetChildren()) do
+        local scripts = h:FindFirstChild("Scripts")
+        if scripts then
+            for _, v in pairs(scripts:GetChildren()) do
+                if v.Name:lower():find("owner") then
+                    if tostring(v.Value) == username then
+                        return h
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
 
+local myHorse = nil
+local bodyParts, eyeParts, maneParts, saddleParts = {}, {}, {}, {}
+local appearanceLoaded = false
+local horseWarning = nil
+local materialOptions = {"SmoothPlastic", "Plastic", "Wood", "Marble", "Granite", "Brick", "Fabric", "Metal", "DiamondPlate", "Foil", "Glass", "Neon", "ForceField"}
+
+local function BuildPartLists(h)
+    bodyParts, eyeParts, maneParts, saddleParts = {}, {}, {}, {}
+    local bodyPartNames = {"Tail","Mane","HumanoidRootPart","Torso","RightHind","RightFore","Right Leg","Right Arm","Rein","RHCannon","RFCannon","LeftHind","LeftFore","Left Leg","Left Arm","LFCannon","LHCannon","Head"}
+    for _, name in pairs(bodyPartNames) do
+        local part = h:FindFirstChild(name)
+        if part then table.insert(bodyParts, part) end
+    end
+    local eyes = h:FindFirstChild("Eyes")
+    if eyes then table.insert(eyeParts, eyes) end
+    local mane = h:FindFirstChild("Mane")
+    if mane then table.insert(maneParts, mane) end
+    local saddle = h:FindFirstChild("Saddle")
+    if saddle then table.insert(saddleParts, saddle) end
+end
+
+local function LoadAppearanceControls()
+    if appearanceLoaded then return end
+    appearanceLoaded = true
+
+    AppearanceTab:CreateColorPicker({ Name = "Body Colour", Color = Color3.fromRGB(255,255,255), Callback = function(v) for _,p in pairs(bodyParts) do pcall(function() p.Color = v end) end end })
+    AppearanceTab:CreateDropdown({ Name = "Body Material", Options = materialOptions, CurrentOption = {"SmoothPlastic"}, MultipleOptions = false, Callback = function(v) local m = type(v)=="table" and v[1] or v for _,p in pairs(bodyParts) do pcall(function() p.Material = Enum.Material[m] end) end end })
+
+    AppearanceTab:CreateColorPicker({ Name = "Eyes Colour", Color = Color3.fromRGB(255,255,255), Callback = function(v) for _,p in pairs(eyeParts) do pcall(function() p.Color = v end) end end })
+    AppearanceTab:CreateDropdown({ Name = "Eyes Material", Options = materialOptions, CurrentOption = {"SmoothPlastic"}, MultipleOptions = false, Callback = function(v) local m = type(v)=="table" and v[1] or v for _,p in pairs(eyeParts) do pcall(function() p.Material = Enum.Material[m] end) end end })
+
+    AppearanceTab:CreateColorPicker({ Name = "Mane Colour", Color = Color3.fromRGB(255,255,255), Callback = function(v) for _,p in pairs(maneParts) do pcall(function() p.Color = v end) end end })
+    AppearanceTab:CreateDropdown({ Name = "Mane Material", Options = materialOptions, CurrentOption = {"SmoothPlastic"}, MultipleOptions = false, Callback = function(v) local m = type(v)=="table" and v[1] or v for _,p in pairs(maneParts) do pcall(function() p.Material = Enum.Material[m] end) end end })
+
+    AppearanceTab:CreateColorPicker({ Name = "Saddle Colour", Color = Color3.fromRGB(255,255,255), Callback = function(v) for _,p in pairs(saddleParts) do pcall(function() p.Color = v end) end end })
+    AppearanceTab:CreateDropdown({ Name = "Saddle Material", Options = materialOptions, CurrentOption = {"SmoothPlastic"}, MultipleOptions = false, Callback = function(v) local m = type(v)=="table" and v[1] or v for _,p in pairs(saddleParts) do pcall(function() p.Material = Enum.Material[m] end) end end })
+end
+
+local function TryLoadHorse()
+    local found = FindMyHorse()
+    if found then
+        myHorse = found
+        BuildPartLists(myHorse)
+        LoadAppearanceControls()
+        if horseWarning then
+            horseWarning:Set("", "")
+            horseWarning = nil
+        end
+    else
+        if not horseWarning then
+            horseWarning = AppearanceTab:CreateParagraph({ Title = "⚠️ Horse Not Found", Content = "Spawn your horse then press Refresh or die/respawn." })
+        end
+    end
+end
+
+-- Initial load
+TryLoadHorse()
+
+AppearanceTab:CreateButton({
+    Name = "Refresh Horse",
+    Callback = function()
+        local found = FindMyHorse()
+        if found then
+            myHorse = found
+            BuildPartLists(myHorse)
+            LoadAppearanceControls()
+            if horseWarning then
+                horseWarning:Set("", "")
+                horseWarning = nil
+            end
+            Rayfield:Notify({ Title = "Horse", Content = "Horse refreshed!", Duration = 3, Image = 4483362458 })
+        else
+            if not horseWarning then
+                horseWarning = AppearanceTab:CreateParagraph({ Title = "⚠️ Horse Not Found", Content = "Spawn your horse then press Refresh or die/respawn." })
+            end
+            Rayfield:Notify({ Title = "Horse", Content = "No horse found. Spawn your horse first.", Duration = 3, Image = 4483362458 })
+        end
+    end,
+})
+
+-- Recheck only on character respawn (after death)
+local function HookCharacter(char)
+    local hum = char:WaitForChild("Humanoid")
+    hum.Died:Connect(function()
+        LocalPlayer.CharacterAdded:Wait()
+        task.wait(3)
+        local found = FindMyHorse()
+        if found then
+            myHorse = found
+            BuildPartLists(myHorse)
+            LoadAppearanceControls()
+            if horseWarning then
+                horseWarning:Set("", "")
+                horseWarning = nil
+            end
+            Rayfield:Notify({ Title = "Horse", Content = "Horse re-linked after respawn!", Duration = 3, Image = 4483362458 })
+        end
+    end)
+end
+
+if LocalPlayer.Character then HookCharacter(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(HookCharacter)
+WorldTab:CreateSlider({
+    Name = "Horse Turn Speed",
+    Range = {0, 420},
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 26,
+    Callback = function(v)
+        pcall(function()
+            local h = FindMyHorse()
+            if h then
+                local ts = h:FindFirstChild("Scripts") and h.Scripts:FindFirstChild("TurnSpeed")
+                if ts then ts.Value = v end
+            end
+        end)
+    end,
+})
+WorldTab:CreateToggle({
+    Name = "Horse Whip (Makes horse follow you everywhere)",
+    CurrentValue = false,
+    Callback = function(Value)
+        if Value then
+            _G.HorseWhip = true
+            task.spawn(function()
+                while _G.HorseWhip do
+                    game:GetService("ReplicatedStorage").GeneralEvents.SpawnHorse:InvokeServer("CallHorse")
+                    task.wait(0.2)
+                end
+            end)
+        else
+            _G.HorseWhip = false
+        end
+    end,
+})
+WorldTab:CreateSection("Bullet FX")
+
+local bulletColor = Color3.fromRGB(255, 0, 128)
+local bulletLifetime = 1
+
+local function ApplyBulletFX(shot)
+    for _, obj in pairs(shot:GetDescendants()) do
+        if obj:IsA("Trail") then
+            obj.Color = ColorSequence.new(bulletColor)
+        end
+        if obj.Name == "Emission" or obj:IsA("ParticleEmitter") then
+            pcall(function() obj.Lifetime = NumberRange.new(bulletLifetime) end)
+        end
+    end
+end
+
+local bullets = workspace:WaitForChild("Bullets")
+for _, shot in pairs(bullets:GetChildren()) do
+    pcall(function() ApplyBulletFX(shot) end)
+end
+bullets.ChildAdded:Connect(function(shot)
+    pcall(function() ApplyBulletFX(shot) end)
+end)
+
+WorldTab:CreateColorPicker({
+    Name = "Bullet Trail Colour",
+    Color = Color3.fromRGB(255, 0, 128),
+    Callback = function(v)
+        bulletColor = v
+    end,
+})
+local function ApplyBulletFX(shot)
+    for _, obj in pairs(shot:GetDescendants()) do
+        if obj.Name == "Trail" and obj:IsA("Trail") then
+            obj.Color = ColorSequence.new(bulletColor)
+            pcall(function() obj.Lifetime = bulletLifetime end)
+            print("[Bullets] Set Trail color and lifetime: " .. bulletLifetime)
+        end
+    end
+end
+
+-- ─── LOOPS ────────────────────────────────────────────────────────────────────
+task.spawn(function()
+    while task.wait(1) do
+        if Settings.AnimalESP then
+            for _, folderName in pairs({"Harvestables", "Animals", "NPCS"}) do
+                local folder = workspace:FindFirstChild(folderName)
+                if folder then
+                    for _, v in pairs(folder:GetChildren()) do
+                        if v:IsA("Model") then
+                            local rp = GetRootPart(v)
+                            if rp then
+                                local dist = GetDist(rp.Position)
+                                ManageESP(v, CleanAnimalName(v), Settings.AnimalColor, "OverlordAnimalESP", true, dist, false)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
 -- ─── LOOPS ────────────────────────────────────────────────────────────────────
 task.spawn(function()
     while task.wait(1) do
