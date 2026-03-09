@@ -656,7 +656,16 @@ local ActiveFarmTween = nil
 local STEP_SIZE = 25
 local ARRIVE_THRESHOLD = 5
 local TP_DELAY = 0.05
+local names = {"CircularSaw", "AnimalLegTrap", "ShotgunTrap", "PitTrap"}
 
+for _, name in ipairs(names) do
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name == name then
+            obj:Destroy()
+            print("Deleted: " .. name)
+        end
+    end
+end
 local function Log(tag, msg)
     print(string.format("[AUTOFARM][%s] %s", tag, tostring(msg)))
 end
@@ -1095,38 +1104,38 @@ CombatTab:CreateToggle({
     CurrentValue = false,
     Flag = "InfAmmo",
     Callback = function(val)
-        if val then
-            local Consumables = game:GetService("Players").LocalPlayer:WaitForChild("Consumables")
-            
-            -- Connect to every existing item's Changed event
-            local connections = {}
+    if val then
+        local infAmmoConnections = {}
+        local Consumables = LocalPlayer:WaitForChild("Consumables", 5)
+        if Consumables then
             local function hookItem(item)
-                if item:IsA("IntValue") then
+                if item:IsA("IntValue") or item:IsA("NumberValue") then
                     item.Value = 69420
-                    table.insert(connections, item.Changed:Connect(function()
-                        item.Value = 69420
+                    table.insert(infAmmoConnections, item.Changed:Connect(function()
+                        task.defer(function()
+                            if item and item.Parent then
+                                item.Value = 69420
+                            end
+                        end)
                     end))
                 end
             end
-
             for _, item in pairs(Consumables:GetChildren()) do
                 hookItem(item)
             end
-            table.insert(connections, Consumables.ChildAdded:Connect(function(child)
-                task.wait(0.1)
+            table.insert(infAmmoConnections, Consumables.ChildAdded:Connect(function(child)
+                task.wait(0.05)
                 hookItem(child)
             end))
-
-            infAmmoThread = connections
-        else
-            if infAmmoThread then
-                for _, c in pairs(infAmmoThread) do
-                    c:Disconnect()
-                end
-                infAmmoThread = nil
-            end
         end
-    end,
+        infAmmoThread = infAmmoConnections
+    else
+        if infAmmoThread then
+            for _, c in pairs(infAmmoThread) do pcall(function() c:Disconnect() end) end
+            infAmmoThread = nil
+        end
+    end
+end,
 })
 
 CombatTab:CreateSection("Silent Aim")
