@@ -1,18 +1,26 @@
-Top1 Westbound Script by Pwoxy
+# 🤠 Top1 Westbound Script
+> *by **Pwoxy*** .
 
-## To Do List
+![Status](https://img.shields.io/badge/status-active-brightgreen?style=for-the-badge)
+![Game](https://img.shields.io/badge/game-Westbound-brown?style=for-the-badge)
+![Platform](https://img.shields.io/badge/platform-Roblox-red?style=for-the-badge)
 
-~~Fix Aimbot~~
+---
 
-~~Working Chest and Item ESP~~
+## 📋 To-Do List
 
-~~Get Silent Aim Working~~
+| Status | Feature |
+|--------|---------|
+| ✅ | Fix Aimbot |
+| ✅ | Working Chest and Item ESP |
+| ✅ | Get Silent Aim Working |
+| ✅ | Fix Autofarm / Sell|
+| 🔲 | Instant Prompts |
+| 🔲 | Add FOV To Silent Aim and Animal silent aim |
+| 🔲 | Fix Inf Ammo |
 
-F̶i̶x̶ ̶A̶u̶t̶o̶f̶a̶r̶m̶ ̶S̶e̶l̶l̶ ̶/̶ ̶I̶n̶v̶e̶n̶t̶o̶r̶y̶ ̶D̶e̶t̶e̶c̶t̶ ̶I̶s̶s̶u̶e̶
-
-Instant Prompts
-
-Add FOV To Silent Aim
-
-Fix Inf Ammo
-
+---
+![Screen](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu1.png)
+![Screen](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu.png)
+![Screen](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu2.png)
+![Screen](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu3.png)
