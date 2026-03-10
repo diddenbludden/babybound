@@ -1,26 +1,52 @@
-# 🤠 Top1 Westbound Script
-> *by **Pwoxy*** .
-![Website](babybound.github.io)
-![Status](https://img.shields.io/badge/status-active-brightgreen?style=for-the-badge)
-![Game](https://img.shields.io/badge/game-Westbound-brown?style=for-the-badge)
-![Platform](https://img.shields.io/badge/platform-Roblox-red?style=for-the-badge)
+<div align="center">
+
+# 🤠 BabyBound
+### Top 1 Westbound Script — by [Pwoxy](https://github.com/Pwoxy)
+
+[![Status](https://img.shields.io/badge/status-active-brightgreen?style=for-the-badge&logo=circle)](.)
+[![Game](https://img.shields.io/badge/game-Westbound-8B4513?style=for-the-badge)](.)
+[![Platform](https://img.shields.io/badge/platform-Roblox-e2231a?style=for-the-badge&logo=roblox)](.)
+[![Free](https://img.shields.io/badge/price-free-gold?style=for-the-badge)](.)
 
 ---
 
-## 📋 To-Do List
+> *The most feature-complete free Lua script for Westbound.*
+> *No key system. Inject and execute.*
 
-| Status | Feature |
-|--------|---------|
+---
+
+[![Preview](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu1.png)](https://babybound.github.io)
+
+</div>
+
+---
+
+## ✅ To-Do
+
+| | Feature |
+|---|---|
 | ✅ | Fix Aimbot |
-| ✅ | Working Chest and Item ESP |
+| ✅ | Working Chest & Item ESP |
 | ✅ | Get Silent Aim Working |
-| ✅ | Fix Autofarm / Sell|
+| ✅ | Fix Autofarm / Sell |
 | 🔲 | Instant Prompts |
-| 🔲 | Add FOV To Silent Aim and Animal silent aim |
+| 🔲 | FOV for Silent Aim & Animal Silent Aim |
 | 🔲 | Fix Inf Ammo |
 
 ---
-![Screen](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu1.png)
-![Screen](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu.png)
-![Screen](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu2.png)
-![Screen](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu3.png)
+
+## 📸 Screenshots
+
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu.png" width="49%"/>
+<img src="https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu2.png" width="49%"/>
+<img src="https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu3.png" width="49%"/>
+
+</div>
+
+---
+
+<div align="center">
+<sub>© 80HE · </sub>
+</div>
