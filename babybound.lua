@@ -281,7 +281,7 @@ CombatTab:CreateSection("Aimbot Settings")
 VisualsTab:CreateSection("Visuals")
 WorldTab:CreateSection("Utility")
 FarmTab:CreateSection("Mansion Item Farm")
-AppearanceTab:CreateSection("Horse")
+
 
 local function GetRootPart(obj)
     if obj:IsA("BasePart") then return obj end
@@ -1454,16 +1454,7 @@ VisualsTab:CreateColorPicker({
 })
 
 -- ─── WORLD TAB ────────────────────────────────────────────────────────────────             ##############
-local GuiThemeDropdown = WorldTab:CreateDropdown({
-    Name = "Themes",
-    Options = {"Default", "AmberGlow", "Amethyst", "Bloom", "DarkBlue", "Green", "Light", "Ocean", "Serenity"},
-    CurrentOption = {"Default"},
-    MultipleOptions = false,
-    Callback = function(Selected)
-    local theme = type(Selected) == "table" and Selected[1] or Selected
-    Window.ModifyTheme(theme)
-end,
-})
+
 WorldTab:CreateToggle({
     Name = "Enhanced Shaders",
     CurrentValue = false,
@@ -1925,6 +1916,196 @@ local SlotInput = FarmTab:CreateInput({
 Settings.InventorySlots = 24
 -- ──────────────────────────────────────────────────────────────────────────────
 -- ─── APPEARANCE TAB ─────────────────────────────────────────────────────────────
+AppearanceTab:CreateSection("Themes")
+local GuiThemeDropdown = AppearanceTab:CreateDropdown({
+    Name = "Themes",
+    Options = {"Default", "AmberGlow", "Amethyst", "Bloom", "DarkBlue", "Green", "Light", "Ocean", "Serenity"},
+    CurrentOption = {"Default"},
+    MultipleOptions = false,
+    Callback = function(Selected)
+    local theme = type(Selected) == "table" and Selected[1] or Selected
+    Window.ModifyTheme(theme)
+end,
+})
+AppearanceTab:CreateSection("Gun")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+local MATERIALS = {
+    "SmoothPlastic", "Metal", "Neon", "Glass", "Wood",
+    "Marble", "Granite", "Slate", "Cobblestone", "Brick",
+    "Sand", "Fabric", "DiamondPlate", "Foil", "Ice"
+}
+
+local PART_SLOTS = {
+    BoltHammer = {"Bolt", "Hammer"},
+    Handle     = {"Handle"},
+    Metal      = {"Metal"},
+    Cylinder   = {"Cylinder"},
+}
+
+local customColors = {
+    BoltHammer = Color3.fromRGB(80, 80, 80),
+    Handle     = Color3.fromRGB(30, 20, 10),
+    Metal      = Color3.fromRGB(120, 120, 120),
+    Cylinder   = Color3.fromRGB(100, 100, 100),
+}
+
+local customMaterials = {
+    BoltHammer = "Metal",
+    Handle     = "SmoothPlastic",
+    Metal      = "Metal",
+    Cylinder   = "Metal",
+}
+
+local function GetTargetModels()
+    local models = {}
+    local root = workspace:FindFirstChild(player.Name)
+    if not root then return models end
+
+    -- fixed display paths
+    local primaryDisplay = root:FindFirstChild("PrimaryDisplay")
+    local pistolDisplay = root:FindFirstChild("PistolDisplay")
+    if primaryDisplay then table.insert(models, primaryDisplay) end
+    if pistolDisplay then table.insert(models, pistolDisplay) end
+
+    -- any Tool anywhere under workspace[playerName]
+    -- covers equipped gun in character and any other gun models
+    local function ScanForTools(parent)
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("Tool") or child:IsA("Model") then
+                table.insert(models, child)
+            end
+            -- recurse in case tools are nested
+            ScanForTools(child)
+        end
+    end
+
+    -- also check character (equipped tool shows up here)
+    local character = player.Character
+    if character then
+        for _, child in ipairs(character:GetChildren()) do
+            if child:IsA("Tool") then
+                table.insert(models, child)
+            end
+        end
+    end
+
+    ScanForTools(root)
+    return models
+end
+
+local function ApplyToSlot(slotKey, color, materialName)
+    customColors[slotKey] = color
+    customMaterials[slotKey] = materialName
+    local partNames = PART_SLOTS[slotKey]
+    local mat = Enum.Material[materialName] or Enum.Material.SmoothPlastic
+
+    for _, model in ipairs(GetTargetModels()) do
+        for _, partName in ipairs(partNames) do
+            local part = model:FindFirstChild(partName)
+            if part and part:IsA("BasePart") then
+                part.Color = color
+                part.Material = mat
+            end
+        end
+    end
+end
+
+local slotOrder = {
+    {key = "BoltHammer", label = "Bolt / Hammer"},
+    {key = "Handle",     label = "Handle"},
+    {key = "Metal",      label = "Metal"},
+    {key = "Cylinder",   label = "Cylinder"},
+}
+
+for _, slot in ipairs(slotOrder) do
+    local key = slot.key
+    local label = slot.label
+
+    AppearanceTab:CreateColorPicker({
+        Name = label .. " Color",
+        Color = customColors[key],
+        Flag = "GunColor_" .. key,
+        Callback = function(c)
+            ApplyToSlot(key, c, customMaterials[key])
+        end,
+    })
+
+    AppearanceTab:CreateDropdown({
+        Name = label .. " Material",
+        Options = MATERIALS,
+        CurrentOption = {customMaterials[key]},
+        Flag = "GunMat_" .. key,
+        Callback = function(selected)
+            ApplyToSlot(key, customColors[key], selected[1])
+        end,
+    })
+end
+
+-- reapply when player equips a new tool so it stays colored
+player.CharacterAdded:Connect(function(char)
+    char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            task.wait(0.1) -- wait a frame for parts to load
+            for _, slot in ipairs(slotOrder) do
+                ApplyToSlot(slot.key, customColors[slot.key], customMaterials[slot.key])
+            end
+        end
+    end)
+end)
+
+if player.Character then
+    player.Character.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            task.wait(0.1)
+            for _, slot in ipairs(slotOrder) do
+                ApplyToSlot(slot.key, customColors[slot.key], customMaterials[slot.key])
+            end
+        end
+    end)
+end
+AppearanceTab:CreateSection("Bullet FX")
+
+local bulletColor = Color3.fromRGB(255, 0, 128)
+local bulletLifetime = 1
+
+local function ApplyBulletFX(shot)
+    for _, obj in pairs(shot:GetDescendants()) do
+        if obj:IsA("Trail") then
+            obj.Color = ColorSequence.new(bulletColor)
+        end
+        if obj.Name == "Emission" or obj:IsA("ParticleEmitter") then
+            pcall(function() obj.Lifetime = NumberRange.new(bulletLifetime) end)
+        end
+    end
+end
+
+local bullets = workspace:WaitForChild("Bullets")
+for _, shot in pairs(bullets:GetChildren()) do
+    pcall(function() ApplyBulletFX(shot) end)
+end
+bullets.ChildAdded:Connect(function(shot)
+    pcall(function() ApplyBulletFX(shot) end)
+end)
+
+AppearanceTab:CreateColorPicker({
+    Name = "Bullet Trail Colour",
+    Color = Color3.fromRGB(255, 0, 128),
+    Callback = function(v)
+        bulletColor = v
+    end,
+})
+local function ApplyBulletFX(shot)
+    for _, obj in pairs(shot:GetDescendants()) do
+        if obj.Name == "Trail" and obj:IsA("Trail") then
+            obj.Color = ColorSequence.new(bulletColor)
+            pcall(function() obj.Lifetime = bulletLifetime end)
+            print("[Bullets] Set Trail color and lifetime: " .. bulletLifetime)
+        end
+    end
+end
+AppearanceTab:CreateSection("Horse")
 local function FindMyHorse()
     local username = LocalPlayer.Name
     for _, h in pairs(workspace.Horses:GetChildren()) do
@@ -2077,46 +2258,7 @@ WorldTab:CreateToggle({
         end
     end,
 })
-WorldTab:CreateSection("Bullet FX")
 
-local bulletColor = Color3.fromRGB(255, 0, 128)
-local bulletLifetime = 1
-
-local function ApplyBulletFX(shot)
-    for _, obj in pairs(shot:GetDescendants()) do
-        if obj:IsA("Trail") then
-            obj.Color = ColorSequence.new(bulletColor)
-        end
-        if obj.Name == "Emission" or obj:IsA("ParticleEmitter") then
-            pcall(function() obj.Lifetime = NumberRange.new(bulletLifetime) end)
-        end
-    end
-end
-
-local bullets = workspace:WaitForChild("Bullets")
-for _, shot in pairs(bullets:GetChildren()) do
-    pcall(function() ApplyBulletFX(shot) end)
-end
-bullets.ChildAdded:Connect(function(shot)
-    pcall(function() ApplyBulletFX(shot) end)
-end)
-
-WorldTab:CreateColorPicker({
-    Name = "Bullet Trail Colour",
-    Color = Color3.fromRGB(255, 0, 128),
-    Callback = function(v)
-        bulletColor = v
-    end,
-})
-local function ApplyBulletFX(shot)
-    for _, obj in pairs(shot:GetDescendants()) do
-        if obj.Name == "Trail" and obj:IsA("Trail") then
-            obj.Color = ColorSequence.new(bulletColor)
-            pcall(function() obj.Lifetime = bulletLifetime end)
-            print("[Bullets] Set Trail color and lifetime: " .. bulletLifetime)
-        end
-    end
-end
 
 -- ─── LOOPS ────────────────────────────────────────────────────────────────────
 task.spawn(function()
