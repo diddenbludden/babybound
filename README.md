@@ -1,6 +1,6 @@
 # 🤠 Top1 Westbound Script
 > *by **Pwoxy*** .
-
+![Website](babybound.github.io)
 ![Status](https://img.shields.io/badge/status-active-brightgreen?style=for-the-badge)
 ![Game](https://img.shields.io/badge/game-Westbound-brown?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Roblox-red?style=for-the-badge)
