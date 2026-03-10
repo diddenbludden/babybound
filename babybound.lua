@@ -1465,6 +1465,366 @@ local GuiThemeDropdown = WorldTab:CreateDropdown({
 end,
 })
 WorldTab:CreateToggle({
+    Name = "Enhanced Shaders",
+    CurrentValue = false,
+    Flag = "EnhancedShaders",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.EnhancedShaders = v
+
+        if v then
+            local Lighting = game:GetService("Lighting")
+            local RunService = game:GetService("RunService")
+
+            Lighting.GlobalShadows = true
+            Lighting.ShadowSoftness = 0.08
+
+            for _, effect in pairs(Lighting:GetChildren()) do
+                if effect:IsA("BloomEffect") or effect:IsA("ColorCorrectionEffect")
+                or effect:IsA("SunRaysEffect") or effect:IsA("DepthOfFieldEffect")
+                or effect:IsA("BlurEffect") then
+                    if effect.Name ~= "HealthColorCorrection" and effect.Name ~= "GuiBlur" and effect.Name ~= "GuiColorCorrection" then
+                        effect:Destroy()
+                    end
+                end
+            end
+
+            local bloom = Instance.new("BloomEffect")
+            bloom.Intensity = 0.6
+            bloom.Size = 20
+            bloom.Threshold = 0.9
+            bloom.Parent = Lighting
+
+            local sunRays = Instance.new("SunRaysEffect")
+            sunRays.Intensity = 0.12
+            sunRays.Spread = 0.5
+            sunRays.Parent = Lighting
+
+            local colorCorrection = Instance.new("ColorCorrectionEffect")
+            colorCorrection.Brightness = 0.06
+            colorCorrection.Contrast = 0.25
+            colorCorrection.Saturation = 0.2
+            colorCorrection.TintColor = Color3.fromRGB(255, 240, 200)
+            colorCorrection.Parent = Lighting
+
+            local dof = Instance.new("DepthOfFieldEffect")
+            dof.FarIntensity = 0.1
+            dof.NearIntensity = 0.0
+            dof.FocusDistance = 45
+            dof.InFocusRadius = 55
+            dof.Parent = Lighting
+
+            Lighting.Ambient = Color3.fromRGB(80, 78, 75)
+            Lighting.OutdoorAmbient = Color3.fromRGB(110, 105, 95)
+            Lighting.Brightness = 1.0
+
+            local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+
+            local DAY = {
+                bloomIntensity = 0.6, bloomSize = 20, bloomThreshold = 0.9,
+                sunRaysIntensity = 0.12, sunRaysSpread = 0.5,
+                ccBrightness = 0.06, ccContrast = 0.25, ccSaturation = 0.2,
+                ccTint = Color3.fromRGB(255, 240, 200),
+                dofFar = 0.1, dofFocus = 45, dofRadius = 55,
+                atmDensity = 0.3, atmOffset = 0.1,
+                atmColor = Color3.fromRGB(199, 170, 140),
+                atmDecay = Color3.fromRGB(90, 70, 55),
+                atmGlare = 0.1, atmHaze = 1.5, shadowSoftness = 0.08,
+                ambient = Color3.fromRGB(80, 78, 75),
+                outdoorAmbient = Color3.fromRGB(110, 105, 95),
+                brightness = 1.0,
+            }
+
+            local NIGHT = {
+				bloomIntensity = 1.6, bloomSize = 38, bloomThreshold = 0.45,
+                sunRaysIntensity = 0, sunRaysSpread = 0,
+                ccBrightness = 0.15, ccContrast = 0.4, ccSaturation = 0.05,
+                ccTint = Color3.fromRGB(100, 120, 190),
+                dofFar = 0.15, dofFocus = 50, dofRadius = 28,
+                atmDensity = 0.4, atmOffset = 0.2,
+                atmColor = Color3.fromRGB(25, 35, 80),
+                atmDecay = Color3.fromRGB(15, 18, 55),
+                atmGlare = 0, atmHaze = 2.5, shadowSoftness = 0.03,
+                ambient = Color3.fromRGB(25, 28, 45),
+                outdoorAmbient = Color3.fromRGB(35, 40, 60),
+                brightness = 0.3,
+            }
+
+
+            local function Smootherstep(t)
+                return t * t * t * (t * (t * 6 - 15) + 10)
+            end
+
+            local function GetNightAlpha()
+                local clock = Lighting.ClockTime
+                if clock >= 7 and clock < 17 then return 0
+                elseif clock >= 19 or clock < 5 then return 1
+                elseif clock >= 17 and clock < 19 then return Smootherstep((clock - 17) / 2)
+                elseif clock >= 5 and clock < 7 then return Smootherstep(1 - ((clock - 5) / 2))
+                end
+                return 0
+            end
+
+            local function LerpColor(a, b, t)
+                return Color3.new(a.R+(b.R-a.R)*t, a.G+(b.G-a.G)*t, a.B+(b.B-a.B)*t)
+            end
+
+            local function Lerp(a, b, t) return a + (b - a) * t end
+
+            -- start at the correct alpha immediately so no easing delay on enable
+            local currentAlpha = GetNightAlpha()
+            local ALPHA_SPEED = 2.0
+            local elapsed = 0
+
+            _G.ShaderConnection = RunService.RenderStepped:Connect(function(dt)
+                elapsed = elapsed + dt
+                local targetAlpha = GetNightAlpha()
+
+                -- clamp so it always fully reaches 0 or 1
+                currentAlpha = currentAlpha + (targetAlpha - currentAlpha) * math.min(ALPHA_SPEED * dt, 1)
+                if math.abs(currentAlpha - targetAlpha) < 0.001 then
+                    currentAlpha = targetAlpha
+                end
+
+                local alpha = currentAlpha
+                local isNight = alpha > 0.5
+                local pulse = isNight and (math.sin(elapsed * 0.8) * 0.1) or (math.sin(elapsed * 1.2) * 0.06)
+
+                bloom.Intensity = Lerp(DAY.bloomIntensity, NIGHT.bloomIntensity, alpha) + pulse
+                bloom.Size = Lerp(DAY.bloomSize, NIGHT.bloomSize, alpha)
+                bloom.Threshold = Lerp(DAY.bloomThreshold, NIGHT.bloomThreshold, alpha)
+                sunRays.Intensity = Lerp(DAY.sunRaysIntensity, NIGHT.sunRaysIntensity, alpha)
+                sunRays.Spread = Lerp(DAY.sunRaysSpread, NIGHT.sunRaysSpread, alpha)
+                dof.FarIntensity = Lerp(DAY.dofFar, NIGHT.dofFar, alpha)
+                dof.FocusDistance = Lerp(DAY.dofFocus, NIGHT.dofFocus, alpha)
+                dof.InFocusRadius = Lerp(DAY.dofRadius, NIGHT.dofRadius, alpha)
+
+                Lighting.Ambient = LerpColor(DAY.ambient, NIGHT.ambient, alpha)
+                Lighting.OutdoorAmbient = LerpColor(DAY.outdoorAmbient, NIGHT.outdoorAmbient, alpha)
+                Lighting.Brightness = Lerp(DAY.brightness, NIGHT.brightness, alpha)
+                Lighting.ShadowSoftness = Lerp(DAY.shadowSoftness, NIGHT.shadowSoftness, alpha)
+
+                if not Settings.RealisticRain then
+                    colorCorrection.Enabled = true
+                    colorCorrection.Brightness = Lerp(DAY.ccBrightness, NIGHT.ccBrightness, alpha)
+                    colorCorrection.Contrast = Lerp(DAY.ccContrast, NIGHT.ccContrast, alpha)
+                    colorCorrection.Saturation = Lerp(DAY.ccSaturation, NIGHT.ccSaturation, alpha)
+                    colorCorrection.TintColor = LerpColor(DAY.ccTint, NIGHT.ccTint, alpha)
+                else
+                    colorCorrection.Enabled = false
+                end
+
+                if atmosphere then
+                    atmosphere.Density = Lerp(DAY.atmDensity, NIGHT.atmDensity, alpha)
+                    atmosphere.Offset = Lerp(DAY.atmOffset, NIGHT.atmOffset, alpha)
+                    atmosphere.Color = LerpColor(DAY.atmColor, NIGHT.atmColor, alpha)
+                    atmosphere.Decay = LerpColor(DAY.atmDecay, NIGHT.atmDecay, alpha)
+                    atmosphere.Glare = Lerp(DAY.atmGlare, NIGHT.atmGlare, alpha)
+                    atmosphere.Haze = Lerp(DAY.atmHaze, NIGHT.atmHaze, alpha)
+                end
+            end)
+
+            print("[Shaders] Enhanced post-processing applied!")
+        else
+            if _G.ShaderConnection then
+                _G.ShaderConnection:Disconnect()
+                _G.ShaderConnection = nil
+            end
+
+            local Lighting = game:GetService("Lighting")
+            for _, effect in pairs(Lighting:GetChildren()) do
+                if effect:IsA("BloomEffect") or effect:IsA("ColorCorrectionEffect")
+                or effect:IsA("SunRaysEffect") or effect:IsA("DepthOfFieldEffect") then
+                    if effect.Name ~= "HealthColorCorrection" and effect.Name ~= "GuiBlur" and effect.Name ~= "GuiColorCorrection" then
+                        effect:Destroy()
+                    end
+                end
+            end
+
+            Lighting.ShadowSoftness = 0.5
+            Lighting.Ambient = Color3.fromRGB(127, 127, 127)
+            Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
+            Lighting.Brightness = 2
+            print("[Shaders] Post-processing removed.")
+        end
+    end,
+})
+
+WorldTab:CreateToggle({
+    Name = "Realistic Rain",
+    CurrentValue = false,
+    Flag = "RealisticRain",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.RealisticRain = v
+
+        if v then
+            local Lighting = game:GetService("Lighting")
+            local RunService = game:GetService("RunService")
+            local Players = game:GetService("Players")
+            local camera = workspace.CurrentCamera
+            local player = Players.LocalPlayer
+            local character = player.Character or player.CharacterAdded:Wait()
+
+            _G.RainDrops = {}
+            _G.RainBatchIdx = 0
+            _G.RainFolder = Instance.new("Folder")
+            _G.RainFolder.Name = "RainFolder"
+            _G.RainFolder.Parent = workspace
+
+            local DROP_COUNT = 1500
+            local AREA = 60
+            local DROP_SPEED = 400
+            local WIND = Vector3.new(5, 0, 0)
+
+            local function CreateDrop()
+                local part = Instance.new("Part")
+                part.Size = Vector3.new(0.05, 0.05, 0.05)
+                part.Anchored = true
+                part.CanCollide = false
+                part.CanTouch = false
+                part.CastShadow = false
+                part.Transparency = 1
+                part.Parent = _G.RainFolder
+
+                local a0 = Instance.new("Attachment")
+                local a1 = Instance.new("Attachment")
+                a0.Position = Vector3.new(0, 0.4, 0)
+                a1.Position = Vector3.new(0, -0.4, 0)
+                a0.Parent = part
+                a1.Parent = part
+
+                local beam = Instance.new("Beam")
+                beam.Attachment0 = a0
+                beam.Attachment1 = a1
+                beam.Width0 = 0.025
+                beam.Width1 = 0.025
+                beam.Color = ColorSequence.new(Color3.fromRGB(160, 165, 170))
+                beam.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.0),
+                    NumberSequenceKeypoint.new(1, 0.0),
+                })
+                beam.LightEmission = 0.2
+                beam.LightInfluence = 0.8
+                beam.FaceCamera = true
+                beam.Segments = 1
+                beam.CurveSize0 = 0
+                beam.CurveSize1 = 0
+                beam.Parent = part
+
+                local camPos = camera.CFrame.Position
+                local rx = math.random(-AREA, AREA)
+                local ry = math.random(0, AREA * 2)
+                local rz = math.random(-AREA, AREA)
+                part.CFrame = CFrame.new(camPos + Vector3.new(rx, ry, rz))
+
+                return {
+                    part = part,
+                    vel = Vector3.new(WIND.X, -DROP_SPEED, WIND.Z),
+                    life = math.random() * 2,
+                }
+            end
+
+            local created = 0
+            _G.RainSpawnConnection = RunService.RenderStepped:Connect(function()
+                for i = 1, 50 do
+                    if created >= DROP_COUNT then
+                        _G.RainSpawnConnection:Disconnect()
+                        _G.RainSpawnConnection = nil
+                        break
+                    end
+                    table.insert(_G.RainDrops, CreateDrop())
+                    created = created + 1
+                end
+            end)
+
+            _G.RainColorCorrection = Instance.new("ColorCorrectionEffect")
+            _G.RainColorCorrection.Name = "RainColorCorrection"
+            _G.RainColorCorrection.Brightness = -0.08
+            _G.RainColorCorrection.Contrast = 0.3
+            _G.RainColorCorrection.Saturation = -0.6
+            _G.RainColorCorrection.TintColor = Color3.fromRGB(140, 145, 155)
+            _G.RainColorCorrection.Parent = Lighting
+
+            Lighting.FogColor = Color3.fromRGB(110, 115, 125)
+            Lighting.FogStart = 10
+            Lighting.FogEnd = 120
+
+            local rainSound = Instance.new("Sound")
+            rainSound.Name = "RainSound"
+            rainSound.SoundId = "rbxassetid://140533807333752"
+            rainSound.Volume = 1.0
+            rainSound.Looped = true
+            rainSound.RollOffMaxDistance = 0
+            rainSound.Parent = camera
+            rainSound:Play()
+
+            _G.RainConnection = RunService.RenderStepped:Connect(function(dt)
+                local camPos = camera.CFrame.Position
+                local drops = _G.RainDrops
+                local count = #drops
+                if count == 0 then return end
+
+                local batchSize = math.ceil(count / 3)
+                local startIdx = (_G.RainBatchIdx % count) + 1
+                _G.RainBatchIdx = _G.RainBatchIdx + batchSize
+
+                for i = startIdx, math.min(startIdx + batchSize - 1, count) do
+                    local drop = drops[i]
+                    if drop then
+                        drop.life = drop.life - dt
+                        local pos = drop.part.Position + drop.vel * dt
+                        drop.part.CFrame = CFrame.new(pos)
+
+                        if drop.life <= 0 or (pos - camPos).Magnitude > AREA * 2.5 then
+                            local rx = math.random(-AREA, AREA)
+                            local rz = math.random(-AREA, AREA)
+                            drop.part.CFrame = CFrame.new(camPos + Vector3.new(rx, AREA + 10, rz))
+                            drop.life = 1.0 + math.random() * 1.0
+                        end
+                    end
+                end
+            end)
+
+            print("[Rain] Storm rain enabled.")
+        else
+            if _G.RainSpawnConnection then
+                _G.RainSpawnConnection:Disconnect()
+                _G.RainSpawnConnection = nil
+            end
+
+            if _G.RainConnection then
+                _G.RainConnection:Disconnect()
+                _G.RainConnection = nil
+            end
+
+            if _G.RainFolder then
+                _G.RainFolder:Destroy()
+                _G.RainFolder = nil
+            end
+
+            _G.RainDrops = nil
+            _G.RainBatchIdx = 0
+
+            local camera = workspace.CurrentCamera
+            local Lighting = game:GetService("Lighting")
+
+            local rainSound = camera:FindFirstChild("RainSound")
+            if rainSound then rainSound:Destroy() end
+
+            if _G.RainColorCorrection then
+                _G.RainColorCorrection:Destroy()
+                _G.RainColorCorrection = nil
+            end
+
+            Lighting.FogEnd = 100000
+            Lighting.FogStart = 0
+
+            print("[Rain] Rain disabled.")
+        end
+    end,
+})
+WorldTab:CreateToggle({
     Name = "Full Bright",
     CurrentValue = false,
     Flag = "FullBright",
