@@ -1,7 +1,7 @@
 <div align="center">
 
 # 🤠 BabyBound
-### Top 1 Westbound Script — by [Pwoxy](https://github.com/Pwoxy)
+### Top 1 Westbound Script — by Pwoxy
 
 [![Status](https://img.shields.io/badge/status-active-brightgreen?style=for-the-badge&logo=circle)](.)
 [![Game](https://img.shields.io/badge/game-Westbound-8B4513?style=for-the-badge)](.)
