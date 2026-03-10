@@ -15,7 +15,7 @@
 
 ---
 
-[![Preview](https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu1.png)](https://babybound.github.io)
+[![Website](https://img.shields.io/badge/🤠_BABYBOUND-Visit%20Website-8B4513?style=for-the-badge&labelColor=1a0a00&color=c9973a)](https://babybound.github.io)
 
 </div>
 
@@ -38,7 +38,7 @@
 ## 📸 Screenshots
 
 <div align="center">
-
+<img src="https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu1.png" width="49%"/>
 <img src="https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu.png" width="49%"/>
 <img src="https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu2.png" width="49%"/>
 <img src="https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu3.png" width="49%"/>
