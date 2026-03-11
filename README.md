@@ -32,6 +32,7 @@
 | 🟥 | Instant Prompts, Game uses a custom prompt system with bool values like Opened and Closed for chests, still trying to figure out how to fire it instantly |
 | 🟥 | FOV for Silent Aim & Animal Silent Aim |
 | 🟥 | Fix Inf Ammo |
+| 🟥 | Fix HBE |
 ---
 
 ## 📸 Screenshots (old)
