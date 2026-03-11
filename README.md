@@ -11,7 +11,7 @@
 ---
 
 > *The most feature-complete free Lua script for Westbound.*
-> *No key system. Inject and execute.*
+> *Easy and short key system (key is on website)*
 
 ---
 
@@ -25,14 +25,13 @@
 
 | | Feature |
 |---|---|
-| ✅ | Fix Aimbot |
-| ✅ | Working Chest & Item ESP |
-| ✅ | Get Silent Aim Working |
-| ✅ | Fix Autofarm / Sell |
-| 🔲 | Instant Prompts, Game uses a custom prompt system with bool values like Opened and Closed for chests, still trying to figure out how to fire it instantly |
-| 🔲 | FOV for Silent Aim & Animal Silent Aim |
-| 🔲 | Fix Inf Ammo |
-| 🔲 | Fix TeamESP, AntiVoid, Walkspeed Causes Instant Kick |
+| 🟦 | Fixed Flight and Walkspeed (removed jumpheight)
+| 🟨 | Treasure Chest Autofarm And Cash register autofarm |
+| 🟥 | Fix avatar editor and avatar setter |
+| 🟥 | Fix Remote Spy, UI Broken or something |
+| 🟥 | Instant Prompts, Game uses a custom prompt system with bool values like Opened and Closed for chests, still trying to figure out how to fire it instantly |
+| 🟥 | FOV for Silent Aim & Animal Silent Aim |
+| 🟥 | Fix Inf Ammo |
 ---
 
 ## 📸 Screenshots
