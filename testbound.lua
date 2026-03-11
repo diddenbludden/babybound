@@ -1155,6 +1155,7 @@ end
 
 -- ─── FLIGHT ────────────────────────────────────────────────────────────────────
 local _flightBV = nil
+local _flightBG = nil
 local _flightConn = nil
 
 local function StartFlight()
@@ -1163,37 +1164,65 @@ local function StartFlight()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.PlatformStand = true end
+    if hum then
+        hum.PlatformStand = true
+        hum.AutoRotate = false
+    end
+
     local bv = Instance.new("BodyVelocity")
     bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
     bv.Velocity = Vector3.zero
     bv.Parent = hrp
     _flightBV = bv
+
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+    bg.P = 1e4
+    bg.D = 1e3
+    bg.CFrame = CFrame.new(hrp.Position) 
+    bg.Parent = hrp
+    _flightBG = bg
+
     _flightConn = RunService.RenderStepped:Connect(function()
         if not Settings.FlightEnabled then return end
         local char2 = LocalPlayer.Character
         if not char2 then return end
         local hrp2 = char2:FindFirstChild("HumanoidRootPart")
         if not hrp2 or _flightBV ~= bv then return end
+
         local vel = Vector3.zero
         local spd = Settings.FlightSpeed
+
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + Camera.CFrame.LookVector * spd end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - Camera.CFrame.LookVector * spd end
         if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - Camera.CFrame.RightVector * spd end
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + Camera.CFrame.RightVector * spd end
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0, spd, 0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then vel = vel - Vector3.new(0, spd, 0) end
+
         bv.Velocity = vel
+    
+        local camLook = Camera.CFrame.LookVector
+        local flatLook = Vector3.new(camLook.X, 0, camLook.Z)
+        if flatLook.Magnitude > 0.01 then
+            bg.CFrame = CFrame.new(hrp2.Position, hrp2.Position + flatLook)
+        else
+            bg.CFrame = CFrame.new(hrp2.Position)
+        end
     end)
 end
 
 local function StopFlight()
     if _flightConn then _flightConn:Disconnect() _flightConn = nil end
     if _flightBV then _flightBV:Destroy() _flightBV = nil end
+    if _flightBG then _flightBG:Destroy() _flightBG = nil end
     local char = LocalPlayer.Character
     if char then
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then hum.PlatformStand = false end
+        if hum then
+            hum.PlatformStand = false
+            hum.AutoRotate = true
+        end
     end
 end
 
