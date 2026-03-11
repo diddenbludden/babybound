@@ -34,7 +34,7 @@
 | 🟥 | Fix Inf Ammo |
 ---
 
-## 📸 Screenshots
+## 📸 Screenshots (old)
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/diddenbludden/babybound/refs/heads/main/menu1.png" width="49%"/>
