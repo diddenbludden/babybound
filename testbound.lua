@@ -60,11 +60,9 @@ local Settings = {
     -- World / Movement
     InstantInteract = false,
     TPWalk = false,
-    TPWalkSpeed = 2,
+    TPWalkSpeed = 0.1,
     FullBright = false,
     NoFog = false,
-    WalkSpeed = 16,
-    JumpHeight = 50,
     FlightEnabled = false,
     FlightSpeed = 50,
     Noclip = false,
@@ -104,13 +102,24 @@ end)
 local function RainbowColor()
     return Color3.fromHSV(_rainbowHue, 1, 1)
 end
+-- Put this once at the top of your script
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = LocalPlayer.PlayerGui
 
--- ─── FOV CIRCLE ───────────────────────────────────────────────────────────────
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1
-FOVCircle.Color = Color3.fromRGB(255, 255, 255)
-FOVCircle.Filled = false
-FOVCircle.Transparency = 1
+-- ─── FOV CIRCLE (dotted) ──────────────────────────────────────────────────────
+local FOV_SEGMENTS   = 48   -- total segments around the circle (more = smoother)
+local FOV_DASH_RATIO = 0.55 -- fraction of each segment that is visible (0.5 = half dash half gap)
+
+local fovSegments = {}
+for i = 1, FOV_SEGMENTS do
+    local seg = Drawing.new("Line")
+    seg.Thickness    = 1.5
+    seg.Color        = Color3.fromRGB(255, 255, 255)
+    seg.Transparency = 1
+    seg.Visible      = false
+    table.insert(fovSegments, seg)
+end
 
 -- ─── RAYFIELD WINDOW ──────────────────────────────────────────────────────────
 local GuiTheme = "Default"
@@ -123,6 +132,22 @@ local Window = Rayfield:CreateWindow({
     ToggleUIKeybind = "K",
     DisableRayfieldPrompts = false,
     DisableBuildWarnings = false,
+    LoadingEnabled = false,
+    ConfigurationSaving = {
+    Enabled = true,
+    FolderName = "BabyBound",
+    FileName = "Config"
+	},
+    KeySystem = true,
+    KeySettings = {
+        Title = "BabyBound",
+        Subtitle = "https://discord.gg/Eyusa5VQba",
+        Note = "",
+        FileName = "BabyBoundKey",
+        SaveKey = true,
+        GrabKeyFromSite = false,
+        Key = {string.reverse(string.char(105,97,77))}
+    }
 })
 
 local SoundService = game:GetService("SoundService")
@@ -295,11 +320,10 @@ local AppearanceTab = Window:CreateTab("Appearance","shirt")
 local MiscTab      = Window:CreateTab("Misc",       "settings")
 
 CombatTab:CreateSection("Aimbot Settings")
-VisualsTab:CreateSection("Visuals")
 WorldTab:CreateSection("Utility")
 FarmTab:CreateSection("Mansion Item Farm")
 PlayerTab:CreateSection("Player Settings")
-MiscTab:CreateSection("Miscellaneous")
+
 
 -- ─── HELPERS ──────────────────────────────────────────────────────────────────
 local function GetRootPart(obj)
@@ -594,7 +618,10 @@ local function ApplyHitbox(player)
             local char = player.Character
             if not char then return end
             local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then hrp.Size = Vector3.new(Settings.HitboxSize, Settings.HitboxSize, Settings.HitboxSize) end
+            if not hrp then return end
+            hrp.Size = Vector3.new(Settings.HitboxSize, Settings.HitboxSize, Settings.HitboxSize)
+            hrp.Massless = true
+            hrp.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
         end)
     end
     ResizeHRP()
@@ -613,7 +640,12 @@ local function RemoveHitbox(player)
         local char = player.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then hrp.Size = Vector3.new(2, 2, 1) end
+        if not hrp then return end
+        hrp.Size = Vector3.new(2, 2, 1)
+        hrp.Massless = false
+        hrp.CustomPhysicalProperties = PhysicalProperties.new(
+            0.7, 0.3, 0.5, 0.1, 0.1
+        )
     end)
 end
 
@@ -1488,7 +1520,7 @@ local _snipeTargetName = ""
 -- ─────────────────────────────────────────────────────────────────────────────
 -- ─── COMBAT TAB ───────────────────────────────────────────────────────────────
 CombatTab:CreateToggle({
-    Name = "Aim at Players",
+    Name = "Aimbot",
     CurrentValue = false,
     Flag = "AimPlayers",
     Callback = function(v)
@@ -1498,7 +1530,7 @@ CombatTab:CreateToggle({
     end,
 })
 CombatTab:CreateToggle({
-    Name = "Aim at Animals",
+    Name = "Animal Aimbot",
     CurrentValue = false,
     Flag = "AimAnimals",
     Callback = function(v)
@@ -1523,48 +1555,6 @@ CombatTab:CreateToggle({
     Callback = function(v)
         PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
         Settings.AimTeamCheck = v
-    end,
-})
-CombatTab:CreateToggle({
-    Name = "Hitbox Extender",
-    CurrentValue = false,
-    Flag = "HitboxExtender",
-    Callback = function(v)
-        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
-        Settings.HitboxExtender = v
-        if v then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer then ApplyHitbox(p) end
-            end
-        else
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer then RemoveHitbox(p) end
-            end
-        end
-    end,
-})
-CombatTab:CreateSlider({
-    Name = "Hitbox Size",
-    Range = {2, 30},
-    Increment = 0.5,
-    Suffix = "st",
-    CurrentValue = 5,
-    Flag = "HitboxSize",
-    Callback = function(v)
-        PlaySound(Sounds.Slider, 0.2, 1)
-        Settings.HitboxSize = v
-        if Settings.HitboxExtender then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer then
-                    pcall(function()
-                        local char = p.Character
-                        if not char then return end
-                        local hrp = char:FindFirstChild("HumanoidRootPart")
-                        if hrp then hrp.Size = Vector3.new(v, v, v) end
-                    end)
-                end
-            end
-        end
     end,
 })
 CombatTab:CreateToggle({
@@ -1738,9 +1728,597 @@ CombatTab:CreateToggle({
         Settings.ShowFOVCircle = v
     end,
 })
+CombatTab:CreateColorPicker({
+    Name = "FOV Circle Color",
+    Color = Color3.fromRGB(255, 255, 255),
+    Flag = "FOVColor",
+    Callback = function(v)
+        Settings.FOVColor = v
+    end,
+})
 
 -- ─── VISUALS TAB ──────────────────────────────────────────────────────────────
+-- ── Shared UI helpers (paste these at the very top, before any tab code) ──────
+local T = {
+    PANEL    = Color3.fromRGB(16,  18,  28),
+    SURFACE  = Color3.fromRGB(22,  25,  40),
+    SURFACE2 = Color3.fromRGB(30,  34,  54),
+    BORDER   = Color3.fromRGB(45,  50,  80),
+    ACCENT   = Color3.fromRGB(99,  179, 255),
+    ACCENT2  = Color3.fromRGB(160, 110, 255),
+    DANGER   = Color3.fromRGB(255,  80,  80),
+    TEXT     = Color3.fromRGB(220, 225, 245),
+    SUBTEXT  = Color3.fromRGB(130, 140, 175),
+    DIMTEXT  = Color3.fromRGB(70,   78, 110),
+}
+
+local function Corner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 6)
+    c.Parent = parent
+    return c
+end
+
+local function Stroke(parent, color, thickness)
+    local s = Instance.new("UIStroke")
+    s.Color = color or T.BORDER
+    s.Thickness = thickness or 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
+end
+
+local function MakeLabel(parent, text, size, pos, color, fontSize, bold)
+    local l = Instance.new("TextLabel")
+    l.Text = text
+    l.Size = size
+    l.Position = pos
+    l.BackgroundTransparency = 1
+    l.TextColor3 = color or T.TEXT
+    l.Font = bold ~= false and Enum.Font.GothamBold or Enum.Font.Gotham
+    l.TextSize = fontSize or 13
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.TextTruncate = Enum.TextTruncate.AtEnd
+    l.Parent = parent
+    return l
+end
+-- ─── ESP PREVIEW WINDOW ───────────────────────────────────────────────────────
+local _previewGui = nil
+
+local function OpenESPPreview()
+    if _previewGui then
+        _previewGui.Enabled = not _previewGui.Enabled
+        return
+    end
+
+    _previewGui = Instance.new("ScreenGui")
+    _previewGui.Name = "ESPPreview"
+    _previewGui.ResetOnSpawn = false
+    _previewGui.IgnoreGuiInset = true
+    _previewGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    _previewGui.Parent = LocalPlayer.PlayerGui
+
+    -- Shadow
+    local shadow = Instance.new("Frame")
+    shadow.Size = UDim2.new(0, 508, 0, 418)
+    shadow.Position = UDim2.new(0.5, -250, 0.5, -205)
+    shadow.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    shadow.BackgroundTransparency = 1
+    shadow.BorderSizePixel = 0
+    shadow.Parent = _previewGui
+    Corner(shadow, 14)
+
+    -- Main window
+    local win = Instance.new("Frame")
+    win.Size = UDim2.new(0, 490, 0, 400)
+    win.Position = UDim2.new(0.5, -245, 0.5, -200)
+    win.BackgroundColor3 = T.PANEL
+    win.BorderSizePixel = 0
+    win.Active = true
+    win.Draggable = true
+    win.Parent = _previewGui
+    Corner(win, 10)
+    Stroke(win, T.BORDER, 1)
+
+    -- Glow strip
+    local glow = Instance.new("Frame")
+    glow.Size = UDim2.new(1, 0, 0, 2)
+    glow.BackgroundColor3 = T.ACCENT2
+    glow.BorderSizePixel = 0
+    glow.Parent = win
+    Corner(glow, 2)
+
+    -- Title bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 44)
+    titleBar.BackgroundTransparency = 1
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = win
+
+    local iconBg = Instance.new("Frame")
+    iconBg.Size = UDim2.new(0, 26, 0, 26)
+    iconBg.Position = UDim2.new(0, 12, 0, 9)
+    iconBg.BackgroundColor3 = T.ACCENT2
+    iconBg.BackgroundTransparency = 0.8
+    iconBg.BorderSizePixel = 0
+    iconBg.Parent = titleBar
+    Corner(iconBg, 6)
+    local iconLbl = Instance.new("TextLabel")
+    iconLbl.Size = UDim2.new(1,0,1,0)
+    iconLbl.BackgroundTransparency = 1
+    iconLbl.Text = "👁"
+    iconLbl.TextSize = 13
+    iconLbl.Font = Enum.Font.GothamBold
+    iconLbl.Parent = iconBg
+
+    MakeLabel(titleBar, "ESP Preview", UDim2.new(0,200,0,16), UDim2.new(0,46,0,5), T.TEXT, 14, true)
+    MakeLabel(titleBar, "Live preview of your ESP settings", UDim2.new(0,260,0,14), UDim2.new(0,46,0,22), T.SUBTEXT, 10, false)
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 26, 0, 26)
+    closeBtn.Position = UDim2.new(1, -38, 0, 9)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(60,20,20)
+    closeBtn.TextColor3 = T.DANGER
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 13
+    closeBtn.Text = "✕"
+    closeBtn.BorderSizePixel = 0
+    closeBtn.AutoButtonColor = false
+    closeBtn.Parent = titleBar
+    Corner(closeBtn, 6)
+    closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = T.DANGER closeBtn.TextColor3 = Color3.fromRGB(255,255,255) end)
+    closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(60,20,20) closeBtn.TextColor3 = T.DANGER end)
+    closeBtn.MouseButton1Click:Connect(function() _previewGui.Enabled = false end)
+
+    local titleDiv = Instance.new("Frame")
+    titleDiv.Size = UDim2.new(1,0,0,1)
+    titleDiv.Position = UDim2.new(0,0,0,44)
+    titleDiv.BackgroundColor3 = T.BORDER
+    titleDiv.BorderSizePixel = 0
+    titleDiv.Parent = win
+
+    -- Canvas area
+    local canvas = Instance.new("Frame")
+    canvas.Size = UDim2.new(1,-24,1,-56)
+    canvas.Position = UDim2.new(0,12,0,50)
+    canvas.BackgroundColor3 = T.SURFACE
+    canvas.BorderSizePixel = 0
+    canvas.Parent = win
+    Corner(canvas, 8)
+    Stroke(canvas, T.BORDER, 1)
+
+    -- Grid background dots for depth
+    for row = 1, 6 do
+        for col = 1, 10 do
+            local dot = Instance.new("Frame")
+            dot.Size = UDim2.new(0,2,0,2)
+            dot.Position = UDim2.new(0, col*42-10, 0, row*52-10)
+            dot.BackgroundColor3 = T.BORDER
+            dot.BackgroundTransparency = 0.4
+            dot.BorderSizePixel = 0
+            dot.Parent = canvas
+            Corner(dot, 1)
+        end
+    end
+
+    -- Ground line
+    local ground = Instance.new("Frame")
+    ground.Size = UDim2.new(1,-40,0,1)
+    ground.Position = UDim2.new(0,20,1,-40)
+    ground.BackgroundColor3 = T.BORDER
+    ground.BackgroundTransparency = 0.3
+    ground.BorderSizePixel = 0
+    ground.Parent = canvas
+
+    -- ── Helper: make a subject card ──────────────────────────────────────────
+    -- Each card is a "world entity" drawn as a silhouette + ESP overlays
+
+    local CARD_W = 120
+    local CARD_H = 240
+    local CARD_Y = 20
+    local CARD_POSITIONS = { 30, 175, 320 }  -- x offsets
+
+    local function MakeSubjectCard(parent, xPos, silhouetteData)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(0, CARD_W, 0, CARD_H)
+        container.Position = UDim2.new(0, xPos, 0, CARD_Y)
+        container.BackgroundTransparency = 1
+        container.BorderSizePixel = 0
+        container.Parent = parent
+        return container
+    end
+
+    -- ── SUBJECT 1: Player ─────────────────────────────────────────────────────
+    local playerCard = MakeSubjectCard(canvas, CARD_POSITIONS[1])
+
+    -- Silhouette (simple stick figure body parts)
+    local function MakePart(parent, x, y, w, h, color, alpha)
+        local f = Instance.new("Frame")
+        f.Size = UDim2.new(0,w,0,h)
+        f.Position = UDim2.new(0,x,0,y)
+        f.BackgroundColor3 = color or Color3.fromRGB(60,70,100)
+        f.BackgroundTransparency = alpha or 0.3
+        f.BorderSizePixel = 0
+        f.Parent = parent
+        Corner(f, 2)
+        return f
+    end
+
+    -- Body parts (centered around x=60 in a 120-wide card)
+    local pHead  = MakePart(playerCard, 42, 24,  36, 36, Color3.fromRGB(210,180,140), 0.15) -- head
+    Corner(pHead, 18)
+    local pTorso = MakePart(playerCard, 38, 64,  44, 60, Color3.fromRGB(80,100,160),  0.2)  -- torso
+    local pLArm  = MakePart(playerCard, 20, 64,  16, 52, Color3.fromRGB(80,100,160),  0.2)  -- L arm
+    local pRArm  = MakePart(playerCard, 84, 64,  16, 52, Color3.fromRGB(80,100,160),  0.2)  -- R arm
+    local pLLeg  = MakePart(playerCard, 38, 128, 18, 60, Color3.fromRGB(60,70,110),   0.2)  -- L leg
+    local pRLeg  = MakePart(playerCard, 64, 128, 18, 60, Color3.fromRGB(60,70,110),   0.2)  -- R leg
+
+    -- ── Box ESP overlay
+    local playerBox = Instance.new("Frame")
+    playerBox.Size = UDim2.new(0, 80, 0, 172)
+    playerBox.Position = UDim2.new(0, 20, 0, 18)
+    playerBox.BackgroundTransparency = 1
+    playerBox.BorderSizePixel = 0
+    playerBox.Parent = playerCard
+    local playerBoxStroke = Stroke(playerBox, Settings.BoxESPColor or Color3.fromRGB(255,0,0), 1.5)
+    playerBox.Visible = Settings.PlayerBoxESP or false
+
+    -- ── Name label
+    local playerName = Instance.new("TextLabel")
+    playerName.Size = UDim2.new(0,120,0,16)
+    playerName.Position = UDim2.new(0,0,0,0)
+    playerName.BackgroundTransparency = 1
+    playerName.TextColor3 = Settings.PlayerColor or Color3.fromRGB(255,0,0)
+    playerName.Font = Enum.Font.GothamBold
+    playerName.TextSize = Settings.TextSize or 12
+    playerName.Text = "PlayerName"
+    playerName.TextXAlignment = Enum.TextXAlignment.Center
+    playerName.Visible = Settings.PlayerName or false
+    playerName.Parent = playerCard
+
+    -- ── Head dot
+    local headDot = Instance.new("Frame")
+    headDot.Size = UDim2.new(0,8,0,8)
+    headDot.Position = UDim2.new(0,56,0,38)
+    headDot.BackgroundColor3 = Settings.HeadDotColor or Color3.fromRGB(255,0,255)
+    headDot.BorderSizePixel = 0
+    headDot.Visible = Settings.HeadDotESP or false
+    headDot.Parent = playerCard
+    Corner(headDot, 4)
+
+    -- ── Health bar
+    local hpBarBg = Instance.new("Frame")
+    hpBarBg.Size = UDim2.new(0,6,0,172)
+    hpBarBg.Position = UDim2.new(0,11,0,18)
+    hpBarBg.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    hpBarBg.BackgroundTransparency = 0.3
+    hpBarBg.BorderSizePixel = 0
+    hpBarBg.Visible = Settings.PlayerHP or false
+    hpBarBg.Parent = playerCard
+    Corner(hpBarBg, 2)
+    local hpFill = Instance.new("Frame")
+    hpFill.Size = UDim2.new(1,0,0.72,0)  -- 72% HP
+    hpFill.Position = UDim2.new(0,0,0.28,0)
+    hpFill.BackgroundColor3 = Color3.fromRGB(50,220,80)
+    hpFill.BorderSizePixel = 0
+    hpFill.Parent = hpBarBg
+    Corner(hpFill, 2)
+
+    -- ── Distance label
+    local playerDist = Instance.new("TextLabel")
+    playerDist.Size = UDim2.new(0,120,0,14)
+    playerDist.Position = UDim2.new(0,0,0,192)
+    playerDist.BackgroundTransparency = 1
+    playerDist.TextColor3 = T.SUBTEXT
+    playerDist.Font = Enum.Font.Gotham
+    playerDist.TextSize = 10
+    playerDist.Text = "42m"
+    playerDist.TextXAlignment = Enum.TextXAlignment.Center
+    playerDist.Visible = Settings.ShowDistance or false
+    playerDist.Parent = playerCard
+
+    -- ── Skeleton lines
+    local skeletonLines = {}
+    local SKEL_JOINTS = {
+        -- {x1,y1,x2,y2}
+        {60,30,  60,64},   -- head to torso
+        {60,64,  28,90},   -- torso to L shoulder
+        {60,64,  92,90},   -- torso to R shoulder
+        {28,90,  28,116},  -- L upper arm
+        {92,90,  92,116},  -- R upper arm
+        {60,124, 47,158},  -- torso to L leg
+        {60,124, 73,158},  -- torso to R leg
+        {47,158, 47,188},  -- L lower leg
+        {73,158, 73,188},  -- R lower leg
+    }
+    for _, j in ipairs(SKEL_JOINTS) do
+        local x1,y1,x2,y2 = j[1],j[2],j[3],j[4]
+        local dx = x2-x1 local dy = y2-y1
+        local len = math.sqrt(dx*dx+dy*dy)
+        local angle = math.deg(math.atan2(dy,dx))
+        local line = Instance.new("Frame")
+        line.Size = UDim2.new(0,len,0,2)
+        line.Position = UDim2.new(0,x1,0,y1)
+        line.BackgroundColor3 = Settings.SkeletonColor or Color3.fromRGB(255,255,255)
+        line.BackgroundTransparency = 0.2
+        line.BorderSizePixel = 0
+        line.Rotation = angle
+        line.Visible = Settings.SkeletonESP or false
+        line.Parent = playerCard
+        Corner(line, 1)
+        table.insert(skeletonLines, line)
+    end
+
+    -- ── Tracer line (from bottom center of screen to feet)
+    local tracer = Instance.new("Frame")
+    tracer.Size = UDim2.new(0,2,0,50)
+    tracer.Position = UDim2.new(0,59,0,188)
+    tracer.BackgroundColor3 = Settings.TracerColor or Color3.fromRGB(0,255,255)
+    tracer.BackgroundTransparency = 0.2
+    tracer.BorderSizePixel = 0
+    tracer.Visible = Settings.TracerESP or false
+    tracer.Parent = playerCard
+    Corner(tracer, 1)
+
+    -- ── Chams highlight
+    local chamsHighlight = Instance.new("SelectionBox")
+    -- Can't use SelectionBox in ScreenGui, use a colored overlay instead
+    local chams = Instance.new("Frame")
+    chams.Size = UDim2.new(0,80,0,172)
+    chams.Position = UDim2.new(0,20,0,18)
+    chams.BackgroundColor3 = Settings.BoxESPColor or Color3.fromRGB(255,0,0)
+    chams.BackgroundTransparency = 0.75
+    chams.BorderSizePixel = 0
+    chams.Visible = Settings.PlayerBox or false
+    chams.Parent = playerCard
+    Corner(chams, 4)
+
+    -- Card label
+    local playerCardLbl = Instance.new("TextLabel")
+    playerCardLbl.Size = UDim2.new(0,120,0,14)
+    playerCardLbl.Position = UDim2.new(0,0,0,215)
+    playerCardLbl.BackgroundTransparency = 1
+    playerCardLbl.TextColor3 = T.DIMTEXT
+    playerCardLbl.Font = Enum.Font.GothamBold
+    playerCardLbl.TextSize = 10
+    playerCardLbl.Text = "PLAYER"
+    playerCardLbl.TextXAlignment = Enum.TextXAlignment.Center
+    playerCardLbl.Parent = playerCard
+
+    -- ── SUBJECT 2: Animal ─────────────────────────────────────────────────────
+    local animalCard = MakeSubjectCard(canvas, CARD_POSITIONS[2])
+
+    -- Animal silhouette (quadruped shape)
+    MakePart(animalCard, 20, 80,  80, 40, Color3.fromRGB(120,80,50),  0.2)  -- body
+    MakePart(animalCard, 72, 55,  30, 35, Color3.fromRGB(120,80,50),  0.2)  -- head
+    Corner(MakePart(animalCard, 68, 50, 10, 14, Color3.fromRGB(120,80,50), 0.2), 2) -- ear
+    MakePart(animalCard, 20,  118, 12, 34, Color3.fromRGB(90,60,40),   0.2)  -- front L leg
+    MakePart(animalCard, 38,  118, 12, 34, Color3.fromRGB(90,60,40),   0.2)  -- front R leg
+    MakePart(animalCard, 68,  118, 12, 34, Color3.fromRGB(90,60,40),   0.2)  -- back L leg
+    MakePart(animalCard, 86,  118, 12, 34, Color3.fromRGB(90,60,40),   0.2)  -- back R leg
+    -- tail
+    local tail = Instance.new("Frame")
+    tail.Size = UDim2.new(0,4,0,22)
+    tail.Position = UDim2.new(0,16,0,68)
+    tail.BackgroundColor3 = Color3.fromRGB(100,65,40)
+    tail.BackgroundTransparency = 0.2
+    tail.Rotation = -30
+    tail.BorderSizePixel = 0
+    tail.Parent = animalCard
+    Corner(tail, 2)
+
+    -- Animal name label
+    local animalName = Instance.new("TextLabel")
+    animalName.Size = UDim2.new(0,120,0,16)
+    animalName.Position = UDim2.new(0,0,0,42)
+    animalName.BackgroundTransparency = 1
+    animalName.TextColor3 = Settings.AnimalColor or Color3.fromRGB(255,165,0)
+    animalName.Font = Enum.Font.GothamBold
+    animalName.TextSize = Settings.TextSize or 12
+    animalName.Text = "Wolf [Lv.5]"
+    animalName.TextXAlignment = Enum.TextXAlignment.Center
+    animalName.Visible = Settings.AnimalESP or false
+    animalName.Parent = animalCard
+
+    -- Animal box
+    local animalBox = Instance.new("Frame")
+    animalBox.Size = UDim2.new(0,88,0,100)
+    animalBox.Position = UDim2.new(0,16,0,48)
+    animalBox.BackgroundTransparency = 1
+    animalBox.BorderSizePixel = 0
+    animalBox.Parent = animalCard
+    local animalBoxStroke = Stroke(animalBox, Settings.AnimalColor or Color3.fromRGB(255,165,0), 1.5)
+    animalBox.Visible = Settings.AnimalESP or false
+
+    -- Animal distance
+    local animalDist = Instance.new("TextLabel")
+    animalDist.Size = UDim2.new(0,120,0,14)
+    animalDist.Position = UDim2.new(0,0,0,152)
+    animalDist.BackgroundTransparency = 1
+    animalDist.TextColor3 = T.SUBTEXT
+    animalDist.Font = Enum.Font.Gotham
+    animalDist.TextSize = 10
+    animalDist.Text = "128m"
+    animalDist.TextXAlignment = Enum.TextXAlignment.Center
+    animalDist.Visible = Settings.AnimalESP or false
+    animalDist.Parent = animalCard
+
+    local animalCardLbl = Instance.new("TextLabel")
+    animalCardLbl.Size = UDim2.new(0,120,0,14)
+    animalCardLbl.Position = UDim2.new(0,0,0,215)
+    animalCardLbl.BackgroundTransparency = 1
+    animalCardLbl.TextColor3 = T.DIMTEXT
+    animalCardLbl.Font = Enum.Font.GothamBold
+    animalCardLbl.TextSize = 10
+    animalCardLbl.Text = "ANIMAL"
+    animalCardLbl.TextXAlignment = Enum.TextXAlignment.Center
+    animalCardLbl.Parent = animalCard
+
+    -- ── SUBJECT 3: Chest / Item ───────────────────────────────────────────────
+    local chestCard = MakeSubjectCard(canvas, CARD_POSITIONS[3])
+
+    -- Chest silhouette
+    local chestBody = MakePart(chestCard, 20, 110, 80, 52, Color3.fromRGB(100,70,30), 0.15) -- base
+    local chestLid  = MakePart(chestCard, 20,  96, 80, 20, Color3.fromRGB(130,90,40), 0.15) -- lid
+    Corner(chestLid, 3)
+    -- Chest latch
+    MakePart(chestCard, 54,  118, 12, 10, Color3.fromRGB(200,160,50), 0.1)
+    -- Corner bolts
+    MakePart(chestCard, 22,  112, 8, 8, Color3.fromRGB(180,140,40), 0.1)
+    MakePart(chestCard, 90,  112, 8, 8, Color3.fromRGB(180,140,40), 0.1)
+    -- Glint
+    local glint = Instance.new("Frame")
+    glint.Size = UDim2.new(0,4,0,4)
+    glint.Position = UDim2.new(0,44,0,100)
+    glint.BackgroundColor3 = Color3.fromRGB(255,240,120)
+    glint.BackgroundTransparency = 0.0
+    glint.BorderSizePixel = 0
+    glint.Parent = chestCard
+    Corner(glint, 2)
+
+    -- Chest name label
+    local chestName = Instance.new("TextLabel")
+    chestName.Size = UDim2.new(0,120,0,16)
+    chestName.Position = UDim2.new(0,0,0,78)
+    chestName.BackgroundTransparency = 1
+    chestName.TextColor3 = Settings.ChestColor or Color3.fromRGB(255,215,0)
+    chestName.Font = Enum.Font.GothamBold
+    chestName.TextSize = Settings.TextSize or 12
+    chestName.Text = "Treasure Chest"
+    chestName.TextXAlignment = Enum.TextXAlignment.Center
+    chestName.Visible = Settings.ChestESP or false
+    chestName.Parent = chestCard
+
+    -- Chest box
+    local chestBox = Instance.new("Frame")
+    chestBox.Size = UDim2.new(0,88,0,82)
+    chestBox.Position = UDim2.new(0,16,0,88)
+    chestBox.BackgroundTransparency = 1
+    chestBox.BorderSizePixel = 0
+    chestBox.Parent = chestCard
+    local chestBoxStroke = Stroke(chestBox, Settings.ChestColor or Color3.fromRGB(255,215,0), 1.5)
+    chestBox.Visible = Settings.ChestESP or false
+
+    -- Chest glow (item highlight)
+    local chestGlow = Instance.new("Frame")
+    chestGlow.Size = UDim2.new(0,88,0,82)
+    chestGlow.Position = UDim2.new(0,16,0,88)
+    chestGlow.BackgroundColor3 = Settings.ChestColor or Color3.fromRGB(255,215,0)
+    chestGlow.BackgroundTransparency = 0.82
+    chestGlow.BorderSizePixel = 0
+    chestGlow.Visible = Settings.ChestESP or false
+    chestGlow.Parent = chestCard
+    Corner(chestGlow, 4)
+
+    -- Chest distance
+    local chestDist = Instance.new("TextLabel")
+    chestDist.Size = UDim2.new(0,120,0,14)
+    chestDist.Position = UDim2.new(0,0,0,175)
+    chestDist.BackgroundTransparency = 1
+    chestDist.TextColor3 = T.SUBTEXT
+    chestDist.Font = Enum.Font.Gotham
+    chestDist.TextSize = 10
+    chestDist.Text = "67m"
+    chestDist.TextXAlignment = Enum.TextXAlignment.Center
+    chestDist.Visible = Settings.ChestESP or false
+    chestDist.Parent = chestCard
+
+    local chestCardLbl = Instance.new("TextLabel")
+    chestCardLbl.Size = UDim2.new(0,120,0,14)
+    chestCardLbl.Position = UDim2.new(0,0,0,215)
+    chestCardLbl.BackgroundTransparency = 1
+    chestCardLbl.TextColor3 = T.DIMTEXT
+    chestCardLbl.Font = Enum.Font.GothamBold
+    chestCardLbl.TextSize = 10
+    chestCardLbl.Text = "CHEST / ITEM"
+    chestCardLbl.TextXAlignment = Enum.TextXAlignment.Center
+    chestCardLbl.Parent = chestCard
+
+    -- Dividers between cards
+    for _, xDiv in ipairs({160, 305}) do
+        local div = Instance.new("Frame")
+        div.Size = UDim2.new(0,1,1,-20)
+        div.Position = UDim2.new(0,xDiv,0,10)
+        div.BackgroundColor3 = T.BORDER
+        div.BackgroundTransparency = 0.3
+        div.BorderSizePixel = 0
+        div.Parent = canvas
+    end
+
+    -- ── Live update loop ──────────────────────────────────────────────────────
+    -- Polls Settings every frame so the preview reflects toggles/color changes instantly
+    local rainbow = 0
+    local conn = RunService.RenderStepped:Connect(function(dt)
+        if not _previewGui or not _previewGui.Enabled then return end
+        rainbow = (rainbow + dt * 0.4) % 1
+        local rbCol = Color3.fromHSV(rainbow, 1, 1)
+
+        local ts = Settings.TextSize or 12
+
+        -- Player ESP
+        playerBox.Visible        = Settings.PlayerBoxESP or false
+        playerBoxStroke.Color    = Settings.RainbowBoxESP and rbCol or (Settings.BoxESPColor or Color3.fromRGB(255,0,0))
+        chams.Visible            = Settings.PlayerBox or false
+        chams.BackgroundColor3   = Settings.RainbowBoxESP and rbCol or (Settings.BoxESPColor or Color3.fromRGB(255,0,0))
+        chams.BackgroundTransparency = 0.75
+        playerName.Visible       = Settings.PlayerName or false
+        playerName.TextColor3    = Settings.RainbowNameESP and rbCol or (Settings.PlayerColor or Color3.fromRGB(255,0,0))
+        playerName.TextSize      = ts
+        headDot.Visible          = Settings.HeadDotESP or false
+        headDot.BackgroundColor3 = Settings.RainbowHeadDot and rbCol or (Settings.HeadDotColor or Color3.fromRGB(255,0,255))
+        hpBarBg.Visible          = Settings.PlayerHP or false
+        playerDist.Visible       = Settings.ShowDistance or false
+        tracer.Visible           = Settings.TracerESP or false
+        tracer.BackgroundColor3  = Settings.RainbowTracer and rbCol or (Settings.TracerColor or Color3.fromRGB(0,255,255))
+        for _, line in ipairs(skeletonLines) do
+            line.Visible        = Settings.SkeletonESP or false
+            line.BackgroundColor3 = Settings.RainbowSkeletonESP and rbCol or (Settings.SkeletonColor or Color3.fromRGB(255,255,255))
+        end
+
+        -- Animal ESP
+        local aCol = Settings.RainbowAnimalESP and rbCol or (Settings.AnimalColor or Color3.fromRGB(255,165,0))
+        animalName.Visible       = Settings.AnimalESP or false
+        animalName.TextColor3    = aCol
+        animalName.TextSize      = ts
+        animalBox.Visible        = Settings.AnimalESP or false
+        animalBoxStroke.Color    = aCol
+        animalDist.Visible       = Settings.AnimalESP or false
+
+        -- Chest ESP
+        local cCol = Settings.RainbowChestESP and rbCol or (Settings.ChestColor or Color3.fromRGB(255,215,0))
+        chestName.Visible        = Settings.ChestESP or false
+        chestName.TextColor3     = cCol
+        chestName.TextSize       = ts
+        chestBox.Visible         = Settings.ChestESP or false
+        chestBoxStroke.Color     = cCol
+        chestGlow.Visible        = Settings.ChestESP or false
+        chestGlow.BackgroundColor3 = cCol
+        chestDist.Visible        = Settings.ChestESP or false
+    end)
+
+    -- Clean up connection when gui is destroyed
+    _previewGui.AncestryChanged:Connect(function()
+        if not _previewGui.Parent then
+            conn:Disconnect()
+        end
+    end)
+end
+
+-- ── Add to Visuals tab ────────────────────────────────────────────────────────
+VisualsTab:CreateSection("Preview")
+VisualsTab:CreateButton({
+    Name = "Open ESP Preview",
+    Callback = function()
+        OpenESPPreview()
+    end,
+})
 VisualsTab:CreateSection("Player ESP")
+VisualsTab:CreateToggle({
+    Name = "Box ESP",
+    CurrentValue = false,
+    Flag = "PlayerBoxESP",
+    Callback = function(v) Settings.PlayerBoxESP = v end,
+})
 VisualsTab:CreateToggle({
     Name = "Name ESP",
     CurrentValue = false,
@@ -1748,9 +2326,10 @@ VisualsTab:CreateToggle({
     Callback = function(v) Settings.PlayerName = v end,
 })
 VisualsTab:CreateToggle({
-    Name = "Rainbow Name ESP",
+    Name = "Head Dot ESP",
     CurrentValue = false,
-    Callback = function(v) Settings.RainbowNameESP = v end,
+    Flag = "HeadDotESP",
+    Callback = function(v) Settings.HeadDotESP = v end,
 })
 VisualsTab:CreateToggle({
     Name = "Health ESP",
@@ -1765,11 +2344,34 @@ VisualsTab:CreateToggle({
     Callback = function(v) Settings.PlayerBox = v end,
 })
 VisualsTab:CreateToggle({
-    Name = "Box ESP",
+    Name = "Skeleton ESP",
     CurrentValue = false,
-    Flag = "PlayerBoxESP",
-    Callback = function(v) Settings.PlayerBoxESP = v end,
+    Flag = "SkeletonESP",
+    Callback = function(v) Settings.SkeletonESP = v end,
 })
+VisualsTab:CreateToggle({
+    Name = "Tracer ESP",
+    CurrentValue = false,
+    Flag = "TracerESP",
+    Callback = function(v) Settings.TracerESP = v end,
+})
+VisualsTab:CreateToggle({
+    Name = "ESP Team Check (Enemies only)",
+    CurrentValue = false,
+    Flag = "ESPTeamCheck",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.ESPTeamCheck = v
+    end,
+})
+VisualsTab:CreateToggle({
+    Name = "Show Distance",
+    CurrentValue = false,
+    Flag = "ShowDistance",
+    Callback = function(v) Settings.ShowDistance = v end,
+})
+
+VisualsTab:CreateSection("Player ESP Colors")
 VisualsTab:CreateToggle({
     Name = "Rainbow Box ESP",
     CurrentValue = false,
@@ -1782,10 +2384,15 @@ VisualsTab:CreateColorPicker({
     Callback = function(v) Settings.BoxESPColor = v end,
 })
 VisualsTab:CreateToggle({
-    Name = "Skeleton ESP",
+    Name = "Rainbow Name ESP",
     CurrentValue = false,
-    Flag = "SkeletonESP",
-    Callback = function(v) Settings.SkeletonESP = v end,
+    Callback = function(v) Settings.RainbowNameESP = v end,
+})
+VisualsTab:CreateColorPicker({
+    Name = "Player ESP Color",
+    Color = Color3.fromRGB(255, 0, 0),
+    Flag = "PlayerColor",
+    Callback = function(v) Settings.PlayerColor = v end,
 })
 VisualsTab:CreateToggle({
     Name = "Rainbow Skeleton ESP",
@@ -1799,12 +2406,6 @@ VisualsTab:CreateColorPicker({
     Callback = function(v) Settings.SkeletonColor = v end,
 })
 VisualsTab:CreateToggle({
-    Name = "Head Dot ESP",
-    CurrentValue = false,
-    Flag = "HeadDotESP",
-    Callback = function(v) Settings.HeadDotESP = v end,
-})
-VisualsTab:CreateToggle({
     Name = "Rainbow Head Dot",
     CurrentValue = false,
     Callback = function(v) Settings.RainbowHeadDot = v end,
@@ -1814,12 +2415,6 @@ VisualsTab:CreateColorPicker({
     Color = Color3.fromRGB(255, 0, 255),
     Flag = "HeadDotColor",
     Callback = function(v) Settings.HeadDotColor = v end,
-})
-VisualsTab:CreateToggle({
-    Name = "Tracer ESP",
-    CurrentValue = false,
-    Flag = "TracerESP",
-    Callback = function(v) Settings.TracerESP = v end,
 })
 VisualsTab:CreateToggle({
     Name = "Rainbow Tracer",
@@ -1832,23 +2427,17 @@ VisualsTab:CreateColorPicker({
     Flag = "TracerColor",
     Callback = function(v) Settings.TracerColor = v end,
 })
-VisualsTab:CreateToggle({
-    Name = "ESP Team Check (Enemies only)",
-    CurrentValue = false,
-    Flag = "ESPTeamCheck",
-    Callback = function(v)
-        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
-        Settings.ESPTeamCheck = v
-    end,
-})
-VisualsTab:CreateColorPicker({
-    Name = "Player ESP Color",
-    Color = Color3.fromRGB(255, 0, 0),
-    Flag = "PlayerColor",
-    Callback = function(v) Settings.PlayerColor = v end,
+VisualsTab:CreateSlider({
+    Name = "Text Size",
+    Range = {8, 20},
+    Increment = 1,
+    Suffix = "px",
+    CurrentValue = 12,
+    Flag = "TextSize",
+    Callback = function(v) Settings.TextSize = v end,
 })
 
-VisualsTab:CreateSection("Animal / World ESP")
+VisualsTab:CreateSection("Animal ESP")
 VisualsTab:CreateToggle({
     Name = "Animal ESP",
     CurrentValue = false,
@@ -1868,11 +2457,31 @@ VisualsTab:CreateToggle({
         end
     end,
 })
+
+VisualsTab:CreateSlider({
+    Name = "Max Animal ESP Range",
+    Range = {10, 2000},
+    Increment = 5,
+    Suffix = "studs",
+    CurrentValue = 1000,
+    Flag = "ESPDistance",
+    Callback = function(v) Settings.ESPDistance = v end,
+})
+
+VisualsTab:CreateSection("Animal ESP Colors")
 VisualsTab:CreateToggle({
     Name = "Rainbow Animal ESP",
     CurrentValue = false,
     Callback = function(v) Settings.RainbowAnimalESP = v end,
 })
+VisualsTab:CreateColorPicker({
+    Name = "Animal ESP Color",
+    Color = Color3.fromRGB(255, 165, 0),
+    Flag = "AnimalColor",
+    Callback = function(v) Settings.AnimalColor = v end,
+})
+
+VisualsTab:CreateSection("World ESP")
 VisualsTab:CreateToggle({
     Name = "Chest ESP",
     CurrentValue = false,
@@ -1882,25 +2491,14 @@ VisualsTab:CreateToggle({
         if not v then ClearAllChestESP() end
     end,
 })
-VisualsTab:CreateToggle({
-    Name = "Rainbow Chest ESP",
-    CurrentValue = false,
-    Callback = function(v) Settings.RainbowChestESP = v end,
-})
 VisualsTab:CreateSlider({
     Name = "Max Chest ESP Range",
-    Range = {500, 20000},
-    Increment = 100,
+    Range = {10, 2000},
+    Increment = 5,
     Suffix = "studs",
-    CurrentValue = 10000,
+    CurrentValue = 1000,
     Flag = "ChestESPDistance",
     Callback = function(v) Settings.ChestESPDistance = v end,
-})
-VisualsTab:CreateColorPicker({
-    Name = "Chest ESP Color",
-    Color = Color3.fromRGB(255, 215, 0),
-    Flag = "ChestColor",
-    Callback = function(v) Settings.ChestColor = v end,
 })
 VisualsTab:CreateToggle({
     Name = "Item ESP",
@@ -1911,19 +2509,32 @@ VisualsTab:CreateToggle({
         if not v then ClearAllItemESP() end
     end,
 })
+VisualsTab:CreateSlider({
+    Name = "Max Item ESP Range",
+    Range = {10, 2000},
+    Increment = 5,
+    Suffix = "studs",
+    CurrentValue = 1000,
+    Flag = "ItemESPDistance",
+    Callback = function(v) Settings.ItemESPDistance = v end,
+})
+
+VisualsTab:CreateSection("World ESP Colors")
+VisualsTab:CreateToggle({
+    Name = "Rainbow Chest ESP",
+    CurrentValue = false,
+    Callback = function(v) Settings.RainbowChestESP = v end,
+})
+VisualsTab:CreateColorPicker({
+    Name = "Chest ESP Color",
+    Color = Color3.fromRGB(255, 215, 0),
+    Flag = "ChestColor",
+    Callback = function(v) Settings.ChestColor = v end,
+})
 VisualsTab:CreateToggle({
     Name = "Rainbow Item ESP",
     CurrentValue = false,
     Callback = function(v) Settings.RainbowItemESP = v end,
-})
-VisualsTab:CreateSlider({
-    Name = "Max Item ESP Range",
-    Range = {500, 20000},
-    Increment = 100,
-    Suffix = "studs",
-    CurrentValue = 10000,
-    Flag = "ItemESPDistance",
-    Callback = function(v) Settings.ItemESPDistance = v end,
 })
 VisualsTab:CreateColorPicker({
     Name = "Item ESP Color",
@@ -1931,90 +2542,8 @@ VisualsTab:CreateColorPicker({
     Flag = "ItemColor",
     Callback = function(v) Settings.ItemColor = v end,
 })
-VisualsTab:CreateToggle({
-    Name = "Show Distance",
-    CurrentValue = false,
-    Flag = "ShowDistance",
-    Callback = function(v) Settings.ShowDistance = v end,
-})
-VisualsTab:CreateSlider({
-    Name = "Max Animal ESP Range",
-    Range = {500, 20000},
-    Increment = 100,
-    Suffix = "studs",
-    CurrentValue = 10000,
-    Flag = "ESPDistance",
-    Callback = function(v) Settings.ESPDistance = v end,
-})
-VisualsTab:CreateSlider({
-    Name = "Text Size",
-    Range = {8, 20},
-    Increment = 1,
-    Suffix = "px",
-    CurrentValue = 12,
-    Flag = "TextSize",
-    Callback = function(v) Settings.TextSize = v end,
-})
-VisualsTab:CreateColorPicker({
-    Name = "Animal ESP Color",
-    Color = Color3.fromRGB(255, 165, 0),
-    Flag = "AnimalColor",
-    Callback = function(v) Settings.AnimalColor = v end,
-})
 
 -- ─── PLAYER TAB ───────────────────────────────────────────────────────────────
-PlayerTab:CreateSection("Movement")
-PlayerTab:CreateSlider({
-    Name = "Walk Speed",
-    Range = {16, 500},
-    Increment = 1,
-    Suffix = "",
-    CurrentValue = 16,
-    Flag = "WalkSpeed",
-    Callback = function(v)
-        Settings.WalkSpeed = v
-        local char = LocalPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.WalkSpeed = v end
-        end
-    end,
-})
-PlayerTab:CreateSlider({
-    Name = "Jump Height",
-    Range = {50, 500},
-    Increment = 5,
-    Suffix = "",
-    CurrentValue = 50,
-    Flag = "JumpHeight",
-    Callback = function(v)
-        Settings.JumpHeight = v
-        local char = LocalPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.JumpHeight = v end
-        end
-    end,
-})
-PlayerTab:CreateToggle({
-    Name = "Flight",
-    CurrentValue = false,
-    Flag = "FlightEnabled",
-    Callback = function(v)
-        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
-        Settings.FlightEnabled = v
-        if v then StartFlight() else StopFlight() end
-    end,
-})
-PlayerTab:CreateSlider({
-    Name = "Flight Speed",
-    Range = {10, 300},
-    Increment = 5,
-    Suffix = "",
-    CurrentValue = 50,
-    Flag = "FlightSpeed",
-    Callback = function(v) Settings.FlightSpeed = v end,
-})
 PlayerTab:CreateToggle({
     Name = "Noclip",
     CurrentValue = false,
@@ -2033,27 +2562,109 @@ PlayerTab:CreateToggle({
         Settings.AntiVoid = v
     end,
 })
+PlayerTab:CreateToggle({
+    Name = "Hitbox Extender",
+    CurrentValue = false,
+    Flag = "HitboxExtender",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.HitboxExtender = v
+        if v then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then ApplyHitbox(p) end
+            end
+        else
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then RemoveHitbox(p) end
+            end
+        end
+    end,
+})
+PlayerTab:CreateSlider({
+    Name = "Hitbox Size",
+    Range = {2, 30},
+    Increment = 0.5,
+    Suffix = "st",
+    CurrentValue = 5,
+    Flag = "HitboxSize",
+    Callback = function(v)
+        PlaySound(Sounds.Slider, 0.2, 1)
+        Settings.HitboxSize = v
+        if Settings.HitboxExtender then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then
+                    pcall(function()
+                        local char = p.Character
+                        if not char then return end
+                        local hrp = char:FindFirstChild("HumanoidRootPart")
+                        if not hrp then return end
+                        hrp.Size = Vector3.new(v, v, v)
+                        hrp.Massless = true
+                        hrp.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+                    end)
+                end
+            end
+        end
+    end,
+})
+PlayerTab:CreateSection("Movement")
+PlayerTab:CreateToggle({
+    Name = "Walk Speed",
+    CurrentValue = false,
+    Flag = "TPWalk",
+    Callback = function(v) Settings.TPWalk = v end,
+})
+PlayerTab:CreateSlider({
+    Name = "Walkspeed",
+    Range = {0.1, 15},
+    Increment = 0.1,
+    Suffix = "x",
+    CurrentValue = 0.1,
+    Flag = "TPWalkSpeed",
+    Callback = function(v) Settings.TPWalkSpeed = v end,
+})
+PlayerTab:CreateToggle({
+    Name = "Flight",
+    CurrentValue = false,
+    Flag = "FlightEnabled",
+    Callback = function(v)
+        PlaySound(Sounds.Toggle, 0.4, v and 1.1 or 0.9)
+        Settings.FlightEnabled = v
+        if v then StartFlight() else StopFlight() end
+    end,
+})
+PlayerTab:CreateSlider({
+    Name = "Flight Speed",
+    Range = {10, 420},
+    Increment = 5,
+    Suffix = "",
+    CurrentValue = 50,
+    Flag = "FlightSpeed",
+    Callback = function(v) Settings.FlightSpeed = v end,
+})
 
 PlayerTab:CreateSection("Camera")
 PlayerTab:CreateSlider({
     Name = "FOV",
-    Range = {70, 120},
+    Range = {20, 120},
     Increment = 1,
     Suffix = "°",
     CurrentValue = 70,
     Flag = "CameraFOV",
     Callback = function(v)
+        Settings.CameraFOV = v
         Camera.FieldOfView = v
     end,
 })
 PlayerTab:CreateSlider({
     Name = "Max Zoom Distance",
-    Range = {0, 2000},
-    Increment = 10,
+    Range = {7, 1000},
+    Increment = 1,
     Suffix = "st",
-    CurrentValue = 400,
+    CurrentValue = 7,
     Flag = "MaxZoom",
     Callback = function(v)
+        Settings.MaxZoom = v
         LocalPlayer.CameraMaxZoomDistance = v
     end,
 })
@@ -2273,21 +2884,7 @@ WorldTab:CreateToggle({
         end
     end,
 })
-WorldTab:CreateToggle({
-    Name = "TP-Walk",
-    CurrentValue = false,
-    Flag = "TPWalk",
-    Callback = function(v) Settings.TPWalk = v end,
-})
-WorldTab:CreateSlider({
-    Name = "TP Speed",
-    Range = {1, 15},
-    Increment = 1,
-    Suffix = "x",
-    CurrentValue = 2,
-    Flag = "TPWalkSpeed",
-    Callback = function(v) Settings.TPWalkSpeed = v end,
-})
+
 WorldTab:CreateToggle({
     Name = "Instant Interact",
     CurrentValue = false,
@@ -2296,8 +2893,8 @@ WorldTab:CreateToggle({
 })
 WorldTab:CreateSlider({
     Name = "Gravity",
-    Range = {0, 400},
-    Increment = 5,
+    Range = {0, 420},
+    Increment = 1,
     Suffix = "",
     CurrentValue = 196,
     Flag = "GravityValue",
@@ -2306,6 +2903,8 @@ WorldTab:CreateSlider({
         workspace.Gravity = v
     end,
 })
+Settings.LockTimeOfDay = false
+
 WorldTab:CreateSlider({
     Name = "Time of Day",
     Range = {0, 24},
@@ -2318,6 +2917,14 @@ WorldTab:CreateSlider({
         if not Settings.FullBright then
             Lighting.ClockTime = v
         end
+    end,
+})
+WorldTab:CreateToggle({
+    Name = "Lock Time of Day",
+    CurrentValue = false,
+    Flag = "LockTimeOfDay",
+    Callback = function(v)
+        Settings.LockTimeOfDay = v
     end,
 })
 WorldTab:CreateSlider({
@@ -2492,6 +3099,9 @@ local bulletColor = Color3.fromRGB(255, 0, 128)
 local bulletLifetime = 1
 
 local function ApplyBulletFX(shot)
+local bullets = workspace:WaitForChild("Bullets")
+	for _, shot in pairs(bullets:GetChildren()) do pcall(function() ApplyBulletFX(shot) end) end
+	bullets.ChildAdded:Connect(function(shot) pcall(function() ApplyBulletFX(shot) end) end)
     for _, obj in pairs(shot:GetDescendants()) do
         if obj:IsA("Trail") then
             obj.Color = ColorSequence.new(bulletColor)
@@ -2502,37 +3112,939 @@ local function ApplyBulletFX(shot)
     end
 end
 
-local bullets = workspace:WaitForChild("Bullets")
-for _, shot in pairs(bullets:GetChildren()) do pcall(function() ApplyBulletFX(shot) end) end
-bullets.ChildAdded:Connect(function(shot) pcall(function() ApplyBulletFX(shot) end) end)
 
-AppearanceTab:CreateColorPicker({
-    Name = "Bullet Trail Colour",
-    Color = Color3.fromRGB(255, 0, 128),
-    Callback = function(v) bulletColor = v end,
-})
+-- ─── AVATAR UTILITIES ─────────────────────────────────────────────────────────
+local _avatarTargetId = ""
 
-AppearanceTab:CreateSection("Mesh / Accessory Spoofer")
+local ACCESSORY_PROPS = {
+    "HatAccessory", "HairAccessory", "FaceAccessory", "BackAccessory",
+    "WaistAccessory", "NeckAccessory", "FrontAccessory", "ShouldersAccessory",
+}
+local ACCESSORY_PROPS_SET = {
+    BackAccessory=true, FaceAccessory=true, FrontAccessory=true,
+    HatAccessory=true, NeckAccessory=true, ShouldersAccessory=true,
+    WaistAccessory=true, HairAccessory=true,
+}
+
+local function ApplyDescToChar(char, desc)
+    if not char or not desc then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    -- Try native first
+    local ok = pcall(function() hum:ApplyDescription(desc) end)
+    if ok then return end
+
+    -- Fallback
+    task.spawn(function()
+        -- Clothing
+        pcall(function()
+            if desc.Shirt and desc.Shirt ~= 0 then
+                local s = char:FindFirstChildOfClass("Shirt") or Instance.new("Shirt", char)
+                s.ShirtTemplate = "rbxassetid://" .. desc.Shirt
+            end
+            if desc.Pants and desc.Pants ~= 0 then
+                local p = char:FindFirstChildOfClass("Pants") or Instance.new("Pants", char)
+                p.PantsTemplate = "rbxassetid://" .. desc.Pants
+            end
+            if desc.GraphicTShirt and desc.GraphicTShirt ~= 0 then
+                local t = char:FindFirstChildOfClass("ShirtGraphic") or Instance.new("ShirtGraphic", char)
+                t.Graphic = "rbxassetid://" .. desc.GraphicTShirt
+            end
+        end)
+
+        -- Face
+        pcall(function()
+            if desc.Face and desc.Face ~= 0 then
+                local head = char:FindFirstChild("Head")
+                if head then
+                    local face = head:FindFirstChildOfClass("Decal")
+                    if face then face.Texture = "rbxassetid://" .. desc.Face end
+                end
+            end
+        end)
+
+        -- Body colors
+        pcall(function()
+            local function setColor(partName, color)
+                local part = char:FindFirstChild(partName)
+                if part and typeof(color) == "Color3" then part.Color = color end
+            end
+            setColor("Head",          desc.HeadColor)
+            setColor("UpperTorso",    desc.TorsoColor)
+            setColor("LowerTorso",    desc.TorsoColor)
+            setColor("LeftUpperArm",  desc.LeftArmColor)
+            setColor("LeftLowerArm",  desc.LeftArmColor)
+            setColor("LeftHand",      desc.LeftArmColor)
+            setColor("RightUpperArm", desc.RightArmColor)
+            setColor("RightLowerArm", desc.RightArmColor)
+            setColor("RightHand",     desc.RightArmColor)
+            setColor("LeftUpperLeg",  desc.LeftLegColor)
+            setColor("LeftLowerLeg",  desc.LeftLegColor)
+            setColor("LeftFoot",      desc.LeftLegColor)
+            setColor("RightUpperLeg", desc.RightLegColor)
+            setColor("RightLowerLeg", desc.RightLegColor)
+            setColor("RightFoot",     desc.RightLegColor)
+        end)
+
+        -- Scales
+        pcall(function()
+            hum.BodyDepthScale.Value      = desc.DepthScale
+            hum.BodyHeightScale.Value     = desc.HeightScale
+            hum.BodyWidthScale.Value      = desc.WidthScale
+            hum.HeadScale.Value           = desc.HeadScale
+            hum.BodyProportionScale.Value = desc.ProportionScale
+        end)
+
+        -- Accessories
+        pcall(function()
+            for _, child in ipairs(char:GetChildren()) do
+                if child:IsA("Accessory") or child:IsA("Hat") then
+                    child:Destroy()
+                end
+            end
+
+            local allIds = {}
+            for _, propName in ipairs(ACCESSORY_PROPS) do
+                local val = desc[propName]
+                if val and val ~= "" then
+                    for idStr in tostring(val):gmatch("[^,]+") do
+                        local id = tonumber(idStr:match("^%s*(.-)%s*$"))
+                        if id and id ~= 0 then
+                            table.insert(allIds, id)
+                        end
+                    end
+                end
+            end
+
+            for _, id in ipairs(allIds) do
+                task.spawn(function()
+                    pcall(function()
+                        local model = InsertService:LoadAsset(id)
+                        local acc = nil
+                        for _, v in ipairs(model:GetDescendants()) do
+                            if v:IsA("Accessory") or v:IsA("Hat") then
+                                acc = v
+                                break
+                            end
+                        end
+                        if not acc then acc = model:FindFirstChildOfClass("Accessory") or model:FindFirstChildOfClass("Hat") end
+                        if acc then
+                            acc.Parent = char
+                            local handle = acc:FindFirstChild("Handle")
+                            if handle then
+                                local attachment = handle:FindFirstChildOfClass("Attachment")
+                                if attachment then
+                                    local attName = attachment.Name
+                                    for _, part in ipairs(char:GetChildren()) do
+                                        if part:IsA("BasePart") then
+                                            local charAtt = part:FindFirstChild(attName)
+                                            if charAtt then
+                                                local weld = Instance.new("Weld")
+                                                weld.Part0 = part
+                                                weld.Part1 = handle
+                                                weld.C0 = charAtt.CFrame
+                                                weld.C1 = attachment.CFrame
+                                                weld.Parent = handle
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        model:Destroy()
+                    end)
+                end)
+            end
+        end)
+    end)
+end
+
+local function LoadAvatarOntoCharacter(userId)
+    local char = LocalPlayer.Character
+    if not char then
+        Rayfield:Notify({ Title="Avatar", Content="No character found.", Duration=3, Image=4483362458 })
+        return
+    end
+    local uid = tonumber(userId)
+    if not uid then
+        Rayfield:Notify({ Title="Avatar", Content="Invalid user ID.", Duration=3, Image=4483362458 })
+        return
+    end
+    task.spawn(function()
+        local ok, desc = pcall(function()
+            return Players:GetHumanoidDescriptionFromUserId(uid)
+        end)
+        if not ok or not desc then
+            Rayfield:Notify({ Title="Avatar", Content="Failed to fetch description.", Duration=3, Image=4483362458 })
+            return
+        end
+        ApplyDescToChar(char, desc)
+        Rayfield:Notify({ Title="Avatar", Content="Avatar applied!", Duration=3, Image=4483362458 })
+    end)
+end
+
+local function ResetAvatar()
+    task.spawn(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        local ok, desc = pcall(function()
+            return Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
+        end)
+        if ok and desc then
+            ApplyDescToChar(char, desc)
+            Rayfield:Notify({ Title="Avatar", Content="Reset to your original avatar.", Duration=3, Image=4483362458 })
+        end
+    end)
+end
+
+-- ─── SANDBOX ──────────────────────────────────────────────────────────────────
+local _sandboxDummy = nil
+
+local function SpawnSandboxDummy(userId)
+    local uid = tonumber(userId)
+    if not uid then
+        Rayfield:Notify({ Title="Sandbox", Content="Invalid user ID.", Duration=3, Image=4483362458 })
+        return
+    end
+    task.spawn(function()
+        pcall(function()
+            if _sandboxDummy then _sandboxDummy:Destroy() _sandboxDummy = nil end
+            local desc = Players:GetHumanoidDescriptionFromUserId(uid)
+            local dummy = Instance.new("Model")
+            dummy.Name = "AvatarSandbox_" .. tostring(uid)
+            local baseModel = InsertService:LoadAsset(104508819)
+            local rig = baseModel:FindFirstChildOfClass("Model")
+            if rig then
+                rig.Parent = dummy
+                dummy.Parent = workspace
+                _sandboxDummy = dummy
+                ApplyDescToChar(rig, desc)
+                local hrp = rig:FindFirstChild("HumanoidRootPart")
+                local playerHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp and playerHRP then
+                    hrp.CFrame = playerHRP.CFrame * CFrame.new(5, 0, 0)
+                end
+                Rayfield:Notify({ Title="Sandbox", Content="Dummy spawned for UID: "..tostring(uid), Duration=4, Image=4483362458 })
+            else
+                dummy:Destroy()
+                Rayfield:Notify({ Title="Sandbox", Content="Failed to load rig.", Duration=3, Image=4483362458 })
+            end
+        end)
+    end)
+end
+
+local function ClearSandboxDummy()
+    if _sandboxDummy then
+        _sandboxDummy:Destroy()
+        _sandboxDummy = nil
+        Rayfield:Notify({ Title="Sandbox", Content="Dummy cleared.", Duration=3, Image=4483362458 })
+    end
+end
+
+-- ─── IN-GAME AVATAR EDITOR ────────────────────────────────────────────────────
+local _editorGui  = nil
+local _editorDesc = nil
+
+local T = {
+    BG       = Color3.fromRGB(10,  11,  18),
+    PANEL    = Color3.fromRGB(16,  18,  28),
+    SURFACE  = Color3.fromRGB(22,  25,  40),
+    SURFACE2 = Color3.fromRGB(30,  34,  54),
+    BORDER   = Color3.fromRGB(45,  50,  80),
+    ACCENT   = Color3.fromRGB(99,  179, 255),
+    ACCENT2  = Color3.fromRGB(160, 110, 255),
+    SUCCESS  = Color3.fromRGB(60,  210, 130),
+    DANGER   = Color3.fromRGB(255,  80,  80),
+    WARNING  = Color3.fromRGB(255, 165,  60),
+    TEXT     = Color3.fromRGB(220, 225, 245),
+    SUBTEXT  = Color3.fromRGB(130, 140, 175),
+    DIMTEXT  = Color3.fromRGB(70,   78, 110),
+}
+
+local SCALE_PROPS = {
+    { label="Height",     prop="HeightScale",     min=0.90, max=1.05 },
+    { label="Width",      prop="WidthScale",      min=0.70, max=1.00 },
+    { label="Head",       prop="HeadScale",       min=0.95, max=1.00 },
+    { label="Depth",      prop="DepthScale",      min=0.70, max=1.00 },
+    { label="Proportion", prop="ProportionScale", min=0.00, max=1.00 },
+}
+
+local CLOTHING_PROPS = {
+    { label="Shirt",        prop="Shirt" },
+    { label="Pants",        prop="Pants" },
+    { label="T-Shirt",      prop="GraphicTShirt" },
+    { label="Face",         prop="Face" },
+    { label="Head",         prop="Head" },
+    { label="Back Acc",     prop="BackAccessory" },
+    { label="Face Acc",     prop="FaceAccessory" },
+    { label="Front Acc",    prop="FrontAccessory" },
+    { label="Hat / Hair",   prop="HatAccessory" },
+    { label="Neck Acc",     prop="NeckAccessory" },
+    { label="Shoulder Acc", prop="ShouldersAccessory" },
+    { label="Waist Acc",    prop="WaistAccessory" },
+}
+
+local BODY_COLOR_PROPS = {
+    { label="Head",      prop="HeadColor" },
+    { label="Torso",     prop="TorsoColor" },
+    { label="Left Arm",  prop="LeftArmColor" },
+    { label="Right Arm", prop="RightArmColor" },
+    { label="Left Leg",  prop="LeftLegColor" },
+    { label="Right Leg", prop="RightLegColor" },
+}
+
+local function GetCurrentDesc()
+    local char = LocalPlayer.Character
+    if not char then return Instance.new("HumanoidDescription") end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return Instance.new("HumanoidDescription") end
+    local ok, desc = pcall(function() return hum:GetAppliedDescription() end)
+    if ok and desc then return desc end
+    return Instance.new("HumanoidDescription")
+end
+
+local function ApplyWorkingDesc()
+    if not _editorDesc then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    ApplyDescToChar(char, _editorDesc)
+    Rayfield:Notify({ Title="Avatar Editor", Content="Applied!", Duration=3, Image=4483362458 })
+end
+
+-- ── UI helpers ────────────────────────────────────────────────────────────────
+local function Corner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 6)
+    c.Parent = parent
+    return c
+end
+
+local function Stroke(parent, color, thickness)
+    local s = Instance.new("UIStroke")
+    s.Color = color or T.BORDER
+    s.Thickness = thickness or 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
+end
+
+local function MakeLabel(parent, text, size, pos, color, fontSize, bold)
+    local l = Instance.new("TextLabel")
+    l.Text = text
+    l.Size = size
+    l.Position = pos
+    l.BackgroundTransparency = 1
+    l.TextColor3 = color or T.TEXT
+    l.Font = bold ~= false and Enum.Font.GothamBold or Enum.Font.Gotham
+    l.TextSize = fontSize or 13
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.TextTruncate = Enum.TextTruncate.AtEnd
+    l.Parent = parent
+    return l
+end
+
+local function MakeInput(parent, placeholder, size, pos, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = size
+    frame.Position = pos
+    frame.BackgroundColor3 = T.SURFACE2
+    frame.BorderSizePixel = 0
+    frame.Parent = parent
+    Corner(frame, 6)
+    local stroke = Stroke(frame, T.BORDER, 1)
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -12, 1, 0)
+    box.Position = UDim2.new(0, 6, 0, 0)
+    box.BackgroundTransparency = 1
+    box.TextColor3 = T.TEXT
+    box.PlaceholderColor3 = T.DIMTEXT
+    box.PlaceholderText = placeholder
+    box.Text = ""
+    box.Font = Enum.Font.Gotham
+    box.TextSize = 12
+    box.ClearTextOnFocus = false
+    box.Parent = frame
+
+    box.Focused:Connect(function() stroke.Color = T.ACCENT end)
+    box.FocusLost:Connect(function()
+        stroke.Color = T.BORDER
+        callback(box.Text)
+    end)
+    return box
+end
+
+local function MakeButton(parent, text, size, pos, style, callback)
+    local colors = {
+        primary   = { bg=T.ACCENT,   text=Color3.fromRGB(5,10,20)    },
+        secondary = { bg=T.SURFACE2, text=T.TEXT                      },
+        danger    = { bg=T.DANGER,   text=Color3.fromRGB(255,255,255) },
+        success   = { bg=T.SUCCESS,  text=Color3.fromRGB(5,20,12)    },
+        ghost     = { bg=Color3.fromRGB(0,0,0), text=T.SUBTEXT        },
+        violet    = { bg=T.ACCENT2,  text=Color3.fromRGB(255,255,255) },
+        warning   = { bg=T.WARNING,  text=Color3.fromRGB(20,10,0)    },
+    }
+    local c = colors[style] or colors.secondary
+
+    local btn = Instance.new("TextButton")
+    btn.Size = size
+    btn.Position = pos
+    btn.BackgroundColor3 = c.bg
+    btn.TextColor3 = c.text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.Text = text
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.Parent = parent
+    Corner(btn, 6)
+
+    if style == "ghost" then
+        btn.BackgroundTransparency = 1
+        Stroke(btn, T.BORDER, 1)
+    end
+
+    btn.MouseEnter:Connect(function()
+        if style == "ghost" then
+            btn.BackgroundTransparency = 0
+            btn.BackgroundColor3 = T.SURFACE2
+        else
+            btn.BackgroundColor3 = Color3.new(
+                math.min(c.bg.R + 0.08, 1),
+                math.min(c.bg.G + 0.08, 1),
+                math.min(c.bg.B + 0.08, 1)
+            )
+        end
+    end)
+    btn.MouseLeave:Connect(function()
+        if style == "ghost" then btn.BackgroundTransparency = 1 end
+        btn.BackgroundColor3 = c.bg
+    end)
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+local function MakeSection(parent, text, yPos)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, -16, 0, 16)
+    l.Position = UDim2.new(0, 8, 0, yPos)
+    l.BackgroundTransparency = 1
+    l.TextColor3 = T.ACCENT
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = 10
+    l.Text = text:upper()
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = parent
+    return l
+end
+
+local function MakeSliderRow(parent, labelText, yPos, minV, maxV, prop)
+    local currentV = 1.0
+    if _editorDesc then
+        pcall(function()
+            if _editorDesc[prop] ~= nil then currentV = _editorDesc[prop] end
+        end)
+    end
+    currentV = math.clamp(currentV, minV, maxV)
+
+    MakeLabel(parent, labelText, UDim2.new(0, 90, 0, 20), UDim2.new(0, 8, 0, yPos + 1), T.SUBTEXT, 11, false)
+
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(0, 160, 0, 6)
+    track.Position = UDim2.new(0, 104, 0, yPos + 8)
+    track.BackgroundColor3 = T.SURFACE2
+    track.BorderSizePixel = 0
+    track.Parent = parent
+    Corner(track, 3)
+    Stroke(track, T.BORDER, 1)
+
+    local initRel = (maxV > minV) and ((currentV - minV) / (maxV - minV)) or 0
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(initRel, 0, 1, 0)
+    fill.BackgroundColor3 = T.ACCENT
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    Corner(fill, 3)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 12, 0, 12)
+    knob.Position = UDim2.new(initRel, -6, 0.5, -6)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.BorderSizePixel = 0
+    knob.Parent = track
+    Corner(knob, 6)
+
+    local dragBtn = Instance.new("TextButton")
+    dragBtn.Size = UDim2.new(0, 20, 0, 20)
+    dragBtn.Position = UDim2.new(initRel, -10, 0.5, -10)
+    dragBtn.BackgroundTransparency = 1
+    dragBtn.Text = ""
+    dragBtn.BorderSizePixel = 0
+    dragBtn.ZIndex = 3
+    dragBtn.Parent = track
+
+    local valLabel = MakeLabel(parent, string.format("%.2f", currentV),
+        UDim2.new(0, 42, 0, 20), UDim2.new(0, 270, 0, yPos + 1),
+        T.ACCENT, 11, true)
+
+    local dragging = false
+    dragBtn.MouseButton1Down:Connect(function() dragging = true end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+    RunService.RenderStepped:Connect(function()
+        if not dragging then return end
+        local mouse = LocalPlayer:GetMouse()
+        local abs  = track.AbsolutePosition
+        local sz   = track.AbsoluteSize
+        local rel  = math.clamp((mouse.X - abs.X) / sz.X, 0, 1)
+        local val  = math.floor((minV + (maxV - minV) * rel) * 100 + 0.5) / 100
+        fill.Size        = UDim2.new(rel, 0, 1, 0)
+        knob.Position    = UDim2.new(rel, -6,  0.5, -6)
+        dragBtn.Position = UDim2.new(rel, -10, 0.5, -10)
+        valLabel.Text    = string.format("%.2f", val)
+        if _editorDesc then pcall(function() _editorDesc[prop] = val end) end
+    end)
+end
+
+local function MakeColorRow(parent, labelText, yPos, prop)
+    MakeLabel(parent, labelText, UDim2.new(0, 90, 0, 20), UDim2.new(0, 8, 0, yPos + 1), T.SUBTEXT, 11, false)
+
+    local initColor = Color3.fromRGB(255, 255, 255)
+    if _editorDesc then
+        pcall(function()
+            if typeof(_editorDesc[prop]) == "Color3" then initColor = _editorDesc[prop] end
+        end)
+    end
+
+    local swatch = Instance.new("Frame")
+    swatch.Size = UDim2.new(0, 20, 0, 20)
+    swatch.Position = UDim2.new(0, 104, 0, yPos)
+    swatch.BackgroundColor3 = initColor
+    swatch.BorderSizePixel = 0
+    swatch.Parent = parent
+    Corner(swatch, 4)
+    Stroke(swatch, T.BORDER, 1)
+
+    local function makeChannel(lbl, xOff, channel)
+        MakeLabel(parent, lbl, UDim2.new(0, 8, 0, 16),
+            UDim2.new(0, 132 + xOff, 0, yPos + 2), T.DIMTEXT, 10, true)
+        local box = MakeInput(parent, "0", UDim2.new(0, 36, 0, 20),
+            UDim2.new(0, 142 + xOff, 0, yPos), function(v)
+                local num = math.clamp(tonumber(v) or 0, 0, 255)
+                if _editorDesc then
+                    pcall(function()
+                        local cur = _editorDesc[prop]
+                        local r, g, b = cur.R*255, cur.G*255, cur.B*255
+                        if channel == "R" then r = num
+                        elseif channel == "G" then g = num
+                        else b = num end
+                        local nc = Color3.fromRGB(r, g, b)
+                        _editorDesc[prop] = nc
+                        swatch.BackgroundColor3 = nc
+                    end)
+                end
+            end)
+        local val = channel == "R" and initColor.R or (channel == "G" and initColor.G or initColor.B)
+        box.Text = tostring(math.floor(val * 255))
+    end
+    makeChannel("R",   0, "R")
+    makeChannel("G",  50, "G")
+    makeChannel("B", 100, "B")
+end
+
+-- ── Main editor window ────────────────────────────────────────────────────────
+local function OpenAvatarEditor()
+    if _editorGui then
+        _editorGui.Enabled = not _editorGui.Enabled
+        return
+    end
+
+    _editorDesc = GetCurrentDesc()
+
+    _editorGui = Instance.new("ScreenGui")
+    _editorGui.Name = "AvatarEditor"
+    _editorGui.ResetOnSpawn = false
+    _editorGui.IgnoreGuiInset = true
+    _editorGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    _editorGui.Parent = LocalPlayer.PlayerGui
+
+    local shadow = Instance.new("Frame")
+    shadow.Size = UDim2.new(0, 450, 0, 590)
+    shadow.Position = UDim2.new(0.5, -221, 0.5, -291)
+    shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    shadow.BackgroundTransparency = 1
+    shadow.BorderSizePixel = 0
+    shadow.Parent = _editorGui
+    Corner(shadow, 14)
+
+    local win = Instance.new("Frame")
+    win.Size = UDim2.new(0, 440, 0, 580)
+    win.Position = UDim2.new(0.5, -220, 0.5, -290)
+    win.BackgroundColor3 = T.PANEL
+    win.BorderSizePixel = 0
+    win.Active = true
+    win.Draggable = true
+    win.Parent = _editorGui
+    Corner(win, 10)
+    Stroke(win, T.BORDER, 1)
+
+    local glowStrip = Instance.new("Frame")
+    glowStrip.Size = UDim2.new(1, 0, 0, 2)
+    glowStrip.Position = UDim2.new(0, 0, 0, 0)
+    glowStrip.BorderSizePixel = 0
+    glowStrip.BackgroundColor3 = T.ACCENT
+    glowStrip.Parent = win
+    Corner(glowStrip, 2)
+
+    -- Title bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 48)
+    titleBar.BackgroundTransparency = 1
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = win
+
+    local iconBg = Instance.new("Frame")
+    iconBg.Size = UDim2.new(0, 28, 0, 28)
+    iconBg.Position = UDim2.new(0, 12, 0, 10)
+    iconBg.BackgroundColor3 = T.ACCENT
+    iconBg.BackgroundTransparency = 0.8
+    iconBg.BorderSizePixel = 0
+    iconBg.Parent = titleBar
+    Corner(iconBg, 6)
+    local iconLabel = Instance.new("TextLabel")
+    iconLabel.Size = UDim2.new(1, 0, 1, 0)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.Text = "✦"
+    iconLabel.TextColor3 = T.ACCENT
+    iconLabel.Font = Enum.Font.GothamBold
+    iconLabel.TextSize = 14
+    iconLabel.Parent = iconBg
+
+    MakeLabel(titleBar, "Avatar Editor", UDim2.new(0, 160, 0, 18), UDim2.new(0, 48, 0, 6), T.TEXT, 15, true)
+    MakeLabel(titleBar, "Customize your appearance", UDim2.new(0, 200, 0, 14), UDim2.new(0, 48, 0, 24), T.SUBTEXT, 10, false)
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 28, 0, 28)
+    closeBtn.Position = UDim2.new(1, -40, 0, 10)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 20)
+    closeBtn.TextColor3 = T.DANGER
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 14
+    closeBtn.Text = "✕"
+    closeBtn.BorderSizePixel = 0
+    closeBtn.AutoButtonColor = false
+    closeBtn.Parent = titleBar
+    Corner(closeBtn, 6)
+    closeBtn.MouseEnter:Connect(function()
+        closeBtn.BackgroundColor3 = T.DANGER
+        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        closeBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 20)
+        closeBtn.TextColor3 = T.DANGER
+    end)
+    closeBtn.MouseButton1Click:Connect(function() _editorGui.Enabled = false end)
+
+    local titleDiv = Instance.new("Frame")
+    titleDiv.Size = UDim2.new(1, 0, 0, 1)
+    titleDiv.Position = UDim2.new(0, 0, 0, 48)
+    titleDiv.BackgroundColor3 = T.BORDER
+    titleDiv.BorderSizePixel = 0
+    titleDiv.Parent = win
+
+    -- Tab bar
+    local TAB_NAMES = { "Clothing", "Scales", "Colors", "Import" }
+    local TAB_ICONS = { "👕", "📐", "🎨", "📥" }
+    local tabFrames = {}
+    local tabBtns   = {}
+
+    local tabBar = Instance.new("Frame")
+    tabBar.Size = UDim2.new(1, -24, 0, 34)
+    tabBar.Position = UDim2.new(0, 12, 0, 56)
+    tabBar.BackgroundColor3 = T.SURFACE
+    tabBar.BorderSizePixel = 0
+    tabBar.Parent = win
+    Corner(tabBar, 8)
+    Stroke(tabBar, T.BORDER, 1)
+
+    local tabPad = Instance.new("UIPadding")
+    tabPad.PaddingLeft   = UDim.new(0, 3)
+    tabPad.PaddingRight  = UDim.new(0, 3)
+    tabPad.PaddingTop    = UDim.new(0, 3)
+    tabPad.PaddingBottom = UDim.new(0, 3)
+    tabPad.Parent = tabBar
+
+    local tabList = Instance.new("UIListLayout")
+    tabList.FillDirection       = Enum.FillDirection.Horizontal
+    tabList.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    tabList.VerticalAlignment   = Enum.VerticalAlignment.Center
+    tabList.Padding             = UDim.new(0, 3)
+    tabList.Parent = tabBar
+
+    local contentArea = Instance.new("Frame")
+    contentArea.Size = UDim2.new(1, -24, 1, -160)
+    contentArea.Position = UDim2.new(0, 12, 0, 98)
+    contentArea.BackgroundTransparency = 1
+    contentArea.ClipsDescendants = true
+    contentArea.Parent = win
+
+    local function SwitchTab(idx)
+        for i, f in pairs(tabFrames) do
+            f.Visible = (i == idx)
+            tabBtns[i].BackgroundColor3 = (i == idx) and T.ACCENT or Color3.fromRGB(0,0,0)
+            tabBtns[i].BackgroundTransparency = (i == idx) and 0 or 1
+            tabBtns[i].TextColor3 = (i == idx) and Color3.fromRGB(5,10,20) or T.SUBTEXT
+        end
+    end
+
+    local tabW = 1 / #TAB_NAMES
+    for i, name in ipairs(TAB_NAMES) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(tabW, -3, 1, 0)
+        btn.BackgroundColor3 = i == 1 and T.ACCENT or Color3.fromRGB(0,0,0)
+        btn.BackgroundTransparency = i == 1 and 0 or 1
+        btn.TextColor3 = i == 1 and Color3.fromRGB(5,10,20) or T.SUBTEXT
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 11
+        btn.Text = TAB_ICONS[i] .. "  " .. name
+        btn.BorderSizePixel = 0
+        btn.AutoButtonColor = false
+        btn.Parent = tabBar
+        Corner(btn, 5)
+        btn.MouseEnter:Connect(function()
+            if btn.BackgroundTransparency == 1 then btn.TextColor3 = T.TEXT end
+        end)
+        btn.MouseLeave:Connect(function()
+            if btn.BackgroundTransparency == 1 then btn.TextColor3 = T.SUBTEXT end
+        end)
+        local idx = i
+        btn.MouseButton1Click:Connect(function() SwitchTab(idx) end)
+        tabBtns[i] = btn
+
+        local frame = Instance.new("ScrollingFrame")
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundTransparency = 1
+        frame.BorderSizePixel = 0
+        frame.ScrollBarThickness = 3
+        frame.ScrollBarImageColor3 = T.ACCENT
+        frame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        frame.Visible = i == 1
+        frame.Parent = contentArea
+        tabFrames[i] = frame
+    end
+
+    -- ── Tab 1: Clothing ───────────────────────────────────────────────────────
+    local clothFrame = tabFrames[1]
+    local cy = 8
+    MakeSection(clothFrame, "Asset IDs", cy)
+    cy = cy + 22
+
+    for _, item in ipairs(CLOTHING_PROPS) do
+        local card = Instance.new("Frame")
+        card.Size = UDim2.new(1, -8, 0, 30)
+        card.Position = UDim2.new(0, 4, 0, cy)
+        card.BackgroundColor3 = T.SURFACE
+        card.BorderSizePixel = 0
+        card.Parent = clothFrame
+        Corner(card, 6)
+
+        MakeLabel(card, item.label, UDim2.new(0, 100, 1, 0), UDim2.new(0, 10, 0, 0), T.SUBTEXT, 11, false)
+
+        local currentVal = ""
+        if _editorDesc then
+            pcall(function()
+                if _editorDesc[item.prop] ~= nil then
+                    currentVal = tostring(_editorDesc[item.prop])
+                end
+            end)
+        end
+
+        local box = MakeInput(card, "Asset ID", UDim2.new(1, -116, 0, 22), UDim2.new(0, 106, 0, 4), function(v)
+            if _editorDesc then
+                pcall(function()
+                    if ACCESSORY_PROPS_SET[item.prop] then
+                        _editorDesc[item.prop] = v
+                    else
+                        local num = tonumber(v)
+                        if num then _editorDesc[item.prop] = num end
+                    end
+                end)
+            end
+        end)
+        box.Text = currentVal
+        cy = cy + 34
+    end
+    clothFrame.CanvasSize = UDim2.new(0, 0, 0, cy + 10)
+
+    -- ── Tab 2: Scales ─────────────────────────────────────────────────────────
+    local scaleFrame = tabFrames[2]
+    local sy = 8
+    MakeSection(scaleFrame, "Body Proportions", sy)
+    sy = sy + 22
+
+    for _, item in ipairs(SCALE_PROPS) do
+        local card = Instance.new("Frame")
+        card.Size = UDim2.new(1, -8, 0, 28)
+        card.Position = UDim2.new(0, 4, 0, sy)
+        card.BackgroundColor3 = T.SURFACE
+        card.BorderSizePixel = 0
+        card.Parent = scaleFrame
+        Corner(card, 6)
+        MakeSliderRow(card, item.label, 4, item.min, item.max, item.prop)
+        sy = sy + 32
+    end
+    scaleFrame.CanvasSize = UDim2.new(0, 0, 0, sy + 10)
+
+    -- ── Tab 3: Body Colors ────────────────────────────────────────────────────
+    local colorFrame = tabFrames[3]
+    local colY = 8
+    MakeSection(colorFrame, "Body Part Colors", colY)
+    colY = colY + 22
+
+    for _, item in ipairs(BODY_COLOR_PROPS) do
+        local card = Instance.new("Frame")
+        card.Size = UDim2.new(1, -8, 0, 28)
+        card.Position = UDim2.new(0, 4, 0, colY)
+        card.BackgroundColor3 = T.SURFACE
+        card.BorderSizePixel = 0
+        card.Parent = colorFrame
+        Corner(card, 6)
+        MakeColorRow(card, item.label, 4, item.prop)
+        colY = colY + 32
+    end
+    colorFrame.CanvasSize = UDim2.new(0, 0, 0, colY + 10)
+
+    -- ── Tab 4: Import ─────────────────────────────────────────────────────────
+    local importFrame = tabFrames[4]
+    local iy = 8
+
+    local stealCard = Instance.new("Frame")
+    stealCard.Size = UDim2.new(1, -8, 0, 110)
+    stealCard.Position = UDim2.new(0, 4, 0, iy)
+    stealCard.BackgroundColor3 = T.SURFACE
+    stealCard.BorderSizePixel = 0
+    stealCard.Parent = importFrame
+    Corner(stealCard, 8)
+    Stroke(stealCard, T.BORDER, 1)
+
+    MakeLabel(stealCard, "Import from User", UDim2.new(1,-16,0,16), UDim2.new(0,10,0,10), T.TEXT, 12, true)
+    MakeLabel(stealCard, "Copy another player's avatar into the editor", UDim2.new(1,-16,0,14), UDim2.new(0,10,0,26), T.SUBTEXT, 10, false)
+    local importBox = MakeInput(stealCard, "Roblox User ID", UDim2.new(1,-16,0,26), UDim2.new(0,8,0,46), function() end)
+    MakeButton(stealCard, "Import Avatar", UDim2.new(1,-16,0,28), UDim2.new(0,8,0,78), "primary", function()
+        local uid = tonumber(importBox.Text)
+        if not uid then
+            Rayfield:Notify({ Title="Editor", Content="Invalid User ID.", Duration=3, Image=4483362458 })
+            return
+        end
+        task.spawn(function()
+            local ok, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserId(uid) end)
+            if ok and desc then
+                _editorDesc = desc
+                Rayfield:Notify({ Title="Editor", Content="Imported! Hit Apply to wear it.", Duration=3, Image=4483362458 })
+            else
+                Rayfield:Notify({ Title="Editor", Content="Failed to fetch.", Duration=3, Image=4483362458 })
+            end
+        end)
+    end)
+    iy = iy + 118
+
+    local myCard = Instance.new("Frame")
+    myCard.Size = UDim2.new(1, -8, 0, 72)
+    myCard.Position = UDim2.new(0, 4, 0, iy)
+    myCard.BackgroundColor3 = T.SURFACE
+    myCard.BorderSizePixel = 0
+    myCard.Parent = importFrame
+    Corner(myCard, 8)
+    Stroke(myCard, T.BORDER, 1)
+
+    MakeLabel(myCard, "Load My Avatar", UDim2.new(1,-16,0,16), UDim2.new(0,10,0,10), T.TEXT, 12, true)
+    MakeLabel(myCard, "Reload your current character into the editor", UDim2.new(1,-16,0,14), UDim2.new(0,10,0,26), T.SUBTEXT, 10, false)
+    MakeButton(myCard, "Load Current Avatar", UDim2.new(1,-16,0,26), UDim2.new(0,8,0,42), "ghost", function()
+        _editorDesc = GetCurrentDesc()
+        Rayfield:Notify({ Title="Editor", Content="Loaded your current avatar.", Duration=3, Image=4483362458 })
+    end)
+    iy = iy + 80
+    importFrame.CanvasSize = UDim2.new(0, 0, 0, iy + 10)
+
+    -- ── Bottom action bar ─────────────────────────────────────────────────────
+    local bottomDiv = Instance.new("Frame")
+    bottomDiv.Size = UDim2.new(1, 0, 0, 1)
+    bottomDiv.Position = UDim2.new(0, 0, 1, -52)
+    bottomDiv.BackgroundColor3 = T.BORDER
+    bottomDiv.BorderSizePixel = 0
+    bottomDiv.Parent = win
+
+    local bottomBar = Instance.new("Frame")
+    bottomBar.Size = UDim2.new(1, 0, 0, 52)
+    bottomBar.Position = UDim2.new(0, 0, 1, -52)
+    bottomBar.BackgroundColor3 = T.SURFACE
+    bottomBar.BorderSizePixel = 0
+    bottomBar.Parent = win
+
+    MakeButton(bottomBar, "✦  Apply to Character",
+        UDim2.new(0, 180, 0, 32), UDim2.new(0, 12, 0, 10),
+        "success", function()
+            ApplyWorkingDesc()
+        end)
+
+    MakeButton(bottomBar, "↩ Reset",
+        UDim2.new(0, 90, 0, 32), UDim2.new(0, 200, 0, 10),
+        "warning", function()
+            _editorDesc = GetCurrentDesc()
+            Rayfield:Notify({ Title="Avatar Editor", Content="Reset to current avatar.", Duration=3, Image=4483362458 })
+        end)
+
+    MakeButton(bottomBar, "🗑 Clear Accs",
+        UDim2.new(0, 110, 0, 32), UDim2.new(0, 298, 0, 10),
+        "danger", function()
+            if _editorDesc then
+                pcall(function()
+                    for _, p in ipairs(ACCESSORY_PROPS) do
+                        _editorDesc[p] = ""
+                    end
+                end)
+                -- Also physically remove from character
+                local char = LocalPlayer.Character
+                if char then
+                    for _, child in ipairs(char:GetChildren()) do
+                        if child:IsA("Accessory") or child:IsA("Hat") then
+                            child:Destroy()
+                        end
+                    end
+                end
+                Rayfield:Notify({ Title="Avatar Editor", Content="Accessories cleared.", Duration=3, Image=4483362458 })
+            end
+        end)
+
+    SwitchTab(1)
+end
+
+-- ─── RAYFIELD UI BINDINGS ─────────────────────────────────────────────────────
+AppearanceTab:CreateSection("Avatar Changer")
 AppearanceTab:CreateInput({
-    Name = "Spoof Mesh ID",
-    PlaceholderText = "Enter mesh asset ID",
+    Name = "Target User ID",
+    PlaceholderText = "Enter Roblox User ID",
     RemoveTextAfterFocusLost = false,
-    Callback = function(v) Settings.SpooferMeshId = v end,
-})
-AppearanceTab:CreateInput({
-    Name = "Spoof Texture ID",
-    PlaceholderText = "Enter texture asset ID",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(v) Settings.SpooferTextureId = v end,
+    Callback = function(v) _avatarTargetId = v end,
 })
 AppearanceTab:CreateButton({
-    Name = "Apply Spoofer",
-    Callback = function()
-        ApplySpoofer()
-        Rayfield:Notify({ Title = "Spoofer", Content = "Mesh/Texture applied!", Duration = 3, Image = 4483362458 })
-    end,
+    Name = "Apply Avatar",
+    Callback = function() LoadAvatarOntoCharacter(_avatarTargetId) end,
+})
+AppearanceTab:CreateButton({
+    Name = "Reset to My Avatar",
+    Callback = function() ResetAvatar() end,
 })
 
+AppearanceTab:CreateSection("Avatar Editor")
+AppearanceTab:CreateButton({
+    Name = "Open Avatar Editor",
+    Callback = function() OpenAvatarEditor() end,
+})
 AppearanceTab:CreateSection("Horse")
 local function FindMyHorse()
     local username = LocalPlayer.Name
@@ -2595,7 +4107,7 @@ local function TryLoadHorse()
     end
 end
 
-TryLoadHorse()
+
 AppearanceTab:CreateButton({
     Name = "Refresh Horse",
     Callback = function()
@@ -2625,8 +4137,6 @@ local function HookCharacter(char)
         end
     end)
     -- Restore walkspeed/jumpheight on respawn
-    hum.WalkSpeed = Settings.WalkSpeed
-    hum.JumpHeight = Settings.JumpHeight
 end
 
 if LocalPlayer.Character then HookCharacter(LocalPlayer.Character) end
@@ -2644,6 +4154,207 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -- ─── MISC TAB ─────────────────────────────────────────────────────────────────
+MiscTab:CreateSection("Config")
+
+local _configName = "Config"
+
+MiscTab:CreateInput({
+    Name = "Config Name",
+    PlaceholderText = "Enter config name (default: Config)",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(v)
+        if v and v ~= "" then
+            _configName = v
+        else
+            _configName = "Config"
+        end
+    end,
+})
+
+MiscTab:CreateButton({
+    Name = "Save Config",
+    Callback = function()
+        pcall(function()
+            if not isfolder("BabyBound") then makefolder("BabyBound") end
+            if not isfolder("BabyBound/Configs") then makefolder("BabyBound/Configs") end
+            -- collect all settings into a table
+            local data = {}
+            for k, v in pairs(Settings) do
+                local t = type(v)
+                if t == "boolean" or t == "number" or t == "string" then
+                    data[k] = v
+                elseif typeof(v) == "Color3" then
+                    data[k] = { __type="Color3", r=v.R, g=v.G, b=v.B }
+                end
+            end
+            local encoded = game:GetService("HttpService"):JSONEncode(data)
+            writefile("BabyBound/Configs/" .. _configName .. ".json", encoded)
+            Rayfield:Notify({ Title="Config", Content="Saved as '".._configName.."'", Duration=3, Image=4483362458 })
+        end)
+    end,
+})
+
+MiscTab:CreateButton({
+    Name = "Load Config",
+    Callback = function()
+        pcall(function()
+            local path = "BabyBound/Configs/" .. _configName .. ".json"
+            if not isfile(path) then
+                Rayfield:Notify({ Title="Config", Content="No config named '"..tostring(_configName).."' found.", Duration=4, Image=4483362458 })
+                return
+            end
+            local raw = readfile(path)
+            local data = game:GetService("HttpService"):JSONDecode(raw)
+            for k, v in pairs(data) do
+                if type(v) == "table" and v.__type == "Color3" then
+                    Settings[k] = Color3.new(v.r, v.g, v.b)
+                else
+                    Settings[k] = v
+                end
+            end
+            Rayfield:Notify({ Title="Config", Content="Loaded '"..tostring(_configName).."'", Duration=3, Image=4483362458 })
+        end)
+    end,
+})
+
+MiscTab:CreateButton({
+    Name = "Delete Config",
+    Callback = function()
+        pcall(function()
+            if _configName == "Config" then
+                Rayfield:Notify({ Title="Config", Content="Cannot delete the default config.", Duration=3, Image=4483362458 })
+                return
+            end
+            local path = "BabyBound/Configs/" .. _configName .. ".json"
+            if isfile(path) then
+                delfile(path)
+                Rayfield:Notify({ Title="Config", Content="Deleted '"..tostring(_configName).."'", Duration=3, Image=4483362458 })
+            else
+                Rayfield:Notify({ Title="Config", Content="Config not found.", Duration=3, Image=4483362458 })
+            end
+        end)
+    end,
+})
+MiscTab:CreateSection("Miscellaneous")
+MiscTab:CreateButton({
+    Name = "Load Explorer",
+    Callback = function()
+        task.spawn(function()
+            local ok, err = pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/dex.lua"))()
+            end)
+            if not ok then
+                Rayfield:Notify({
+                    Title = "Dex",
+                    Content = "Failed to load: " .. tostring(err),
+                    Duration = 5,
+                    Image = 4483362458,
+                })
+            else
+                Rayfield:Notify({
+                    Title = "Dex Explorer",
+                    Content = "Dex loaded successfully!",
+                    Duration = 4,
+                    Image = 4483362458,
+                })
+            end
+        end)
+    end,
+})
+
+MiscTab:CreateButton({
+    Name = "Load Infinite Yield",
+    Callback = function()
+        task.spawn(function()
+            local ok, err = pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()
+            end)
+            if not ok then
+                Rayfield:Notify({
+                    Title = "Infinite Yield",
+                    Content = "Failed to load: " .. tostring(err),
+                    Duration = 5,
+                    Image = 4483362458,
+                })
+            else
+                Rayfield:Notify({
+                    Title = "Infinite Yield",
+                    Content = "Infinite Yield loaded!",
+                    Duration = 4,
+                    Image = 4483362458,
+                })
+            end
+        end)
+    end,
+})
+
+MiscTab:CreateButton({
+    Name = "Load Dex + Infinite Yield",
+    Callback = function()
+        task.spawn(function()
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/dex.lua"))()
+            end)
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()
+            end)
+            Rayfield:Notify({
+                Title = "Tools",
+                Content = "Dex + Infinite Yield loaded!",
+                Duration = 4,
+                Image = 4483362458,
+            })
+        end)
+    end,
+})
+
+MiscTab:CreateSection("Script Executor")
+
+local _scriptInput = ""
+MiscTab:CreateInput({
+    Name = "Script Input",
+    PlaceholderText = "Paste a URL or Lua code",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(v)
+        _scriptInput = v
+    end,
+})
+MiscTab:CreateButton({
+    Name = "Execute URL",
+    Callback = function()
+        if _scriptInput == "" then
+            Rayfield:Notify({ Title="Executor", Content="Nothing entered.", Duration=3, Image=4483362458 })
+            return
+        end
+        task.spawn(function()
+            local ok, err = pcall(function()
+                loadstring(game:HttpGet(_scriptInput))()
+            end)
+            if not ok then
+                Rayfield:Notify({ Title="Executor", Content="Error: "..tostring(err), Duration=5, Image=4483362458 })
+            else
+                Rayfield:Notify({ Title="Executor", Content="Executed successfully!", Duration=3, Image=4483362458 })
+            end
+        end)
+    end,
+})
+MiscTab:CreateButton({
+    Name = "Execute as Raw Lua",
+    Callback = function()
+        if _scriptInput == "" then
+            Rayfield:Notify({ Title="Executor", Content="Nothing entered.", Duration=3, Image=4483362458 })
+            return
+        end
+        task.spawn(function()
+            local ok, err = pcall(loadstring(_scriptInput))
+            if not ok then
+                Rayfield:Notify({ Title="Executor", Content="Error: "..tostring(err), Duration=5, Image=4483362458 })
+            else
+                Rayfield:Notify({ Title="Executor", Content="Executed successfully!", Duration=3, Image=4483362458 })
+            end
+        end)
+    end,
+})
 MiscTab:CreateSection("Server")
 MiscTab:CreateButton({
     Name = "Rejoin Same Server",
@@ -2737,7 +4448,15 @@ MiscTab:CreateButton({
         Rayfield:Notify({ Title = "Remote Firewall", Content = "Cleared all blocks.", Duration = 3, Image = 4483362458 })
     end,
 })
-
+-- ─── FOV / ZOOM ENFORCEMENT LOOP ─────────────────────────────────────────────
+RunService.RenderStepped:Connect(function()
+    if Settings.CameraFOV and Camera.FieldOfView ~= Settings.CameraFOV then
+        Camera.FieldOfView = Settings.CameraFOV
+    end
+    if Settings.MaxZoom and LocalPlayer.CameraMaxZoomDistance ~= Settings.MaxZoom then
+        LocalPlayer.CameraMaxZoomDistance = Settings.MaxZoom
+    end
+end)
 -- ─── ESP LOOPS ────────────────────────────────────────────────────────────────
 task.spawn(function()
     while task.wait(1) do
@@ -2869,10 +4588,38 @@ end)
 
 -- ─── MAIN RENDER LOOP ─────────────────────────────────────────────────────────
 RunService.RenderStepped:Connect(function()
-    -- FOV Circle
-    FOVCircle.Visible = Settings.ShowFOVCircle
-    FOVCircle.Radius = Settings.FOV
-    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local vp  = Camera.ViewportSize
+    local cx  = 0
+    local cy  = 0
+    local r   = Settings.FOV
+    local show = Settings.ShowFOVCircle
+
+    -- offset correction for executor coordinate space
+    local ox = vp.X * 0.04  -- nudge right
+    local oy = vp.Y * 0.04  -- nudge down
+
+    for i, seg in ipairs(fovSegments) do
+        if not show then
+            seg.Visible = false
+        else
+            local angleStep  = (2 * math.pi) / FOV_SEGMENTS
+            local startAngle = (i - 1) * angleStep
+            local endAngle   = startAngle + angleStep * FOV_DASH_RATIO
+
+            seg.From = Vector2.new(
+                cx + ox + r * math.cos(startAngle),
+                cy + oy + r * math.sin(startAngle)
+            )
+            seg.To = Vector2.new(
+                cx + ox + r * math.cos(endAngle),
+                cy + oy + r * math.sin(endAngle)
+            )
+            seg.Color   = Settings.FOVColor or Color3.fromRGB(255, 255, 255)
+            seg.Visible = true
+        end
+    end
+
+
 
     -- Aimbot
     local isAiming = (Settings.AimPlayers or Settings.AimAnimals)
@@ -2917,6 +4664,8 @@ RunService.RenderStepped:Connect(function()
         Lighting.ClockTime = 14
         Lighting.Brightness = 2
         Lighting.GlobalShadows = false
+    elseif Settings.LockTimeOfDay then
+        Lighting.ClockTime = Settings.TimeOfDay
     end
 
     -- No Fog
@@ -3022,7 +4771,7 @@ end)
 
 Rayfield:Notify({
     Title = "BabyBound",
-    Content = "Loaded! v2 — All features active.",
+    Content = "Loaded!",
     Duration = 5,
     Image = 4483362458,
 })
